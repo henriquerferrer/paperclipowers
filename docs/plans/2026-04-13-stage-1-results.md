@@ -82,6 +82,17 @@ This is exactly the `verification-before-completion` discipline: ran the command
 
 Issue PAP-1 final state: `status: done`, `completedAt: 2026-04-13T16:18:19.906Z`.
 
+## Rollback (Task 8) — validated
+
+- `DELETE /api/companies/:id/skills/:skillId` → **HTTP 200**, returns the deleted skill row.
+- `GET /api/companies/:id/skills` → 4 remaining (bundled only); our skill gone.
+- `GET /api/agents/:id` → `desiredSkills` auto-pruned from 5 → 4. Our skill key cleanly removed without leaving a zombie reference. This is the load-bearing assertion: deleting a skill also cleans up per-agent assignments, so uninstalling paperclipowers in a real company won't leave dangling state.
+- Runtime directory `/paperclip/instances/default/skills/{companyId}/__runtime__/` emptied on next materialization.
+- Agent paused via `POST /api/agents/:id/pause` (status now `paused`) so it won't wake on timers while the throwaway company lingers.
+- Local env file `~/.paperclipowers-stage1.env` removed.
+
+Company itself remains on the instance (`companyDeletionEnabled: false` for this build); it's inert — no skill assigned, agent paused, one `done` issue. Safe to ignore until Paperclip adds company deletion to the API.
+
 ## Anomalies / notes for Stage 2
 
 - **Runtime skill materialization path is centralized, not per-workspace.** Paperclip puts runtime skills at `/paperclip/instances/default/skills/{companyId}/__runtime__/{slug}--{hash}/SKILL.md` and symlinks/mounts them in during heartbeat — NOT at `$HOME/.claude/skills/` inside the workspace cwd. The Stage 1 plan assumed the latter based on reading `claude-local/src/server/skills.ts`; the actual placement is driven by adapter-utils. Stage 2 plans should reference `/paperclip/instances/default/skills/` when verifying runtime injection.
