@@ -154,24 +154,24 @@ Run:
 git branch --show-current
 ```
 
-Expected: `master`. If on a different branch, commit work and switch to master.
+Expected: `paperclip-adaptation` (the working branch for the fork; `main` is upstream-synced).
 
 - [ ] **Step 3: Push to GitHub**
 
 Run:
 
 ```bash
-git push -u origin master
+git push -u origin paperclip-adaptation
 ```
 
-Expected: push succeeds; GitHub shows the commit at `https://github.com/henriquerferrer/paperclipowers/commits/master`.
+Expected: push succeeds; GitHub shows the commits at `https://github.com/henriquerferrer/paperclipowers/commits/paperclip-adaptation`.
 
 - [ ] **Step 4: Verify the skill file is live on GitHub**
 
 Run:
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/henriquerferrer/paperclipowers/master/skills-paperclip/verification-before-completion/SKILL.md \
+curl -sfL https://raw.githubusercontent.com/henriquerferrer/paperclipowers/paperclip-adaptation/skills-paperclip/verification-before-completion/SKILL.md \
   | head -4
 ```
 
@@ -318,7 +318,7 @@ curl -sfS -X POST \
   -H "Authorization: Bearer $PAPERCLIP_TOKEN" \
   -H "Content-Type: application/json" \
   "$PAPERCLIP_API_URL/api/companies/$COMPANY_ID/skills/import" \
-  -d '{"source":"https://github.com/henriquerferrer/paperclipowers/tree/master/skills-paperclip"}' \
+  -d '{"source":"https://github.com/henriquerferrer/paperclipowers/tree/paperclip-adaptation/skills-paperclip"}' \
   | jq .
 ```
 
@@ -327,7 +327,7 @@ Expected: JSON response with an `imported` (or `skills`) array containing exactl
 If the response says "No SKILL.md files were found," the subpath in the URL is wrong or the file didn't push — verify with:
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/henriquerferrer/paperclipowers/master/skills-paperclip/verification-before-completion/SKILL.md | head -1
+curl -sfL https://raw.githubusercontent.com/henriquerferrer/paperclipowers/paperclip-adaptation/skills-paperclip/verification-before-completion/SKILL.md | head -1
 ```
 
 - [ ] **Step 2: Verify the skill is in the company library**
