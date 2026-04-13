@@ -237,7 +237,11 @@ Agents share context through:
 - **Parent issue chain** — ancestor issues, goal, project
 - **Git history** — what prior subtasks produced
 
-Agents do NOT share memory. Each heartbeat loads context fresh from these sources.
+Agents do NOT share memory across role handoffs. Role transitions are reassignments to different Paperclip agents; Paperclip resets the Claude session on `issue_assigned` wakes (`server/src/services/heartbeat.ts:715-730`), so each receiving role constructs its working context from the shared sources above.
+
+Within a single role, a subtask chain linked by `blockedByIssueIds` resumes the same Claude session by default — Paperclip's `issue_blockers_resolved` auto-wake preserves the conversation. Paperclipowers keeps fresh-per-subtask context via **progressive assignment**: Tech Lead creates subtasks with `assigneeAgentId: null` and sets the assignee only as each blocker clears, which fires `issue_assigned` (reset) instead of `issue_blockers_resolved` (resumption). Git state and workspace `cwd` still persist across the chain, so the receiving heartbeat sees the predecessor's commits; only the Claude conversation is reset.
+
+A per-agent `sessionPolicy` flag that injects `forceFreshSession: true` into dependent-wake payloads automatically — removing the need for progressive assignment — is tracked as a post-Stage 5 follow-up. Until then, `task-orchestration` (Stage 4) is responsible for progressive assignment on every subtask chain it produces.
 
 ## 6. Error Handling & Escalation
 
