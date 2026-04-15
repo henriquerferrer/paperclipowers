@@ -26,13 +26,15 @@ You are invoked on one of four wake signals in `contextSnapshot.wakeReason`:
 1. **`issue_assigned` on the parent issue, no subtasks yet** — first wake after plan approval. You read the plan, decompose it, create the subtask graph, PATCH the first subtask's assignee, and exit. See § First Wake.
 2. **`issue_comment_mentioned`** — a subtask assignee (or another agent) @-mentioned you. This is the per-subtask completion signal, and also how blockers, NEEDS_CONTEXT questions, and escalations reach you. See § Per-Completion Heartbeat.
 3. **`issue_status_changed` on a subtask** — fallback wake if the assignee transitioned status without posting the mention comment. Rare when subtask descriptions include the Notification Protocol, but handle it defensively.
+
+    (Stage 5 note: the per-subtask-review trigger that would hand subtasks to the Reviewer between completion and final review is INTENTIONALLY NOT wired in Stage 5. Engineer's `done` on a subtask unblocks the next subtask directly; final review happens on the parent once all subtasks are terminal. Stage 7+ may add per-subtask Reviewer handoff.)
 4. **`issue_children_completed` on the parent** — fires exactly once, when every child is terminal. Useful as a backstop, but the per-subtask @mention wakes drive the real orchestration.
 
 The sequence across a feature: plan-approval → parent `issue_assigned` wake → subtask-graph creation + first PATCH → exit heartbeat → per-completion `issue_comment_mentioned` wakes → progressive PATCHes → final subtask `done` → parent → `in_review` → Stage 5 Reviewer wakes on `issue_status_changed`.
 
 ## The Process
 
-1. **Read the plan.** On the parent `issue_assigned` wake, call `GET /api/issues/<parent-id>` and inspect `.planDocument`. If `.planDocument` is non-null, use it as the plan. If `.planDocument` is null, fall back to `.description` (Stage 4 uses description; future stages populate `.planDocument` via a separate skill). Read the plan in full. If the plan has testable acceptance criteria per slice, those become the subtasks' exit criteria.
+1. **Read the plan.** On the parent `issue_assigned` wake, call `GET /api/issues/<parent-id>` and inspect `.planDocument`. `.planDocument.body` is the full plan (written by the Tech Lead's `writing-plans` skill on approval). If `.planDocument` is null, this is a pipeline ordering error: the board has assigned you to orchestrate before the plan exists. Post a comment `@<board> planDocument is null — cannot orchestrate; the plan authoring step has not run. Reassigning back.`, PATCH the issue with `{"status": "todo", "assigneeAgentId": "<board-id>"}`, and exit heartbeat. Do NOT fall back to `.description` — that was Stage 4's transitional behaviour and is no longer correct. Each slice in the plan has concrete Inputs/Outputs schemas, acceptance criteria, dependency annotations, and a `needsDesignPolish: boolean` flag; these become the subtasks' full definition.
 2. **Decompose into subtasks.** Each subtask is one vertical slice of the plan with its own acceptance criteria. Number them. Identify the `blockedByIssueIds` edges: a subtask depends on another iff the earlier subtask's output is required before the later subtask can start or is testable. Shared workspace = add an edge (§ Red Flags).
 3. **Choose the assignee role per subtask.** Stage 4: all subtasks go to the Engineer agent; there is no other role available yet. See § Model Selection.
 4. **Create the subtask graph.** One `POST /api/companies/:id/issues` per subtask. Curl recipe in § Creating the Subtask Graph. The FIRST subtask in each chain is created with `assigneeAgentId: <engineer-agent-id>` and `status: "todo"`; every subsequent subtask is created with `assigneeAgentId: null` and `blockedByIssueIds: [<predecessor-id>]`.
@@ -53,7 +55,7 @@ On the first heartbeat for a parent feature issue, your `contextSnapshot` contai
 Read:
 
 - The parent issue description in full
-- `GET /api/issues/<parent-id>` — inspect `.planDocument`. If non-null, use it as the plan. If null, the plan lives in `.description` (Stage 4 uses description; future stages populate `.planDocument` via a separate skill).
+- `GET /api/issues/<parent-id>` — inspect `.planDocument`. `.planDocument.body` is the plan (always populated by `writing-plans` before this skill fires; null is a pipeline ordering error — see § The Process Step 1 for handling).
 - Any ancestor issues (`.parentId` up the chain) for broader feature context
 
 Decompose the plan into a subtask list. For each subtask, draft:
@@ -78,6 +80,18 @@ Every subtask is a `POST /api/companies/:company-id/issues` call. The required f
 | `assigneeAgentId` | Engineer agent id for the FIRST subtask in a chain; `null` for every follower |
 | `blockedByIssueIds` | `[]` for the head; `[<predecessor-id>]` for followers |
 | `status` | `"todo"` |
+
+### Reading the `needsDesignPolish` flag per slice
+
+Each slice in `.planDocument.body` declares a `needsDesignPolish: false | true` flag (see `writing-plans/SKILL.md` § Concrete Schemas). When creating each subtask, copy the flag value into the subtask description under a "Design Polish" header:
+
+```
+## Design Polish
+
+**needsDesignPolish:** false
+```
+
+Stage 5 behaviour: always `false`, no Designer subtask spawned. Stage 6 will add: if `true`, create an additional follow-up subtask assigned to the Designer that depends on the Engineer's subtask completion. Stage 5 leaves this as a read-only surface to keep the plan→subtask mapping traceable.
 
 ### Curl recipe idiom
 
