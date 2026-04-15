@@ -63,4 +63,4 @@
 - **§ Creating the Subtask Graph § Reading the `needsDesignPolish` flag per slice ADDED.** Stage 5 reads the flag and copies it into subtask descriptions (read-only surface). Stage 6 will wire the Designer-subtask-creation branch.
 - **§ When to Invoke wake #3 gained a Stage 5 note.** Per-subtask Reviewer handoff intentionally unwired in Stage 5.
 
-Pin SHA for Stage 5: `<captured at Task 8 Step 4>`.
+Pin SHA for Stage 5: `ce32bbdfa3d2a52462ae68fa9d6248eab681bbff`.
