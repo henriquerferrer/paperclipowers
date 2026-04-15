@@ -206,16 +206,18 @@ These apply uniformly across all adapted skills.
 
 When a skill requires human approval of a deliverable:
 
-1. Agent writes deliverable to issue document (`PUT /api/issues/{id}/documents/{key}`)
-2. Agent creates formal approval (`POST /api/approvals` with document reference)
-3. Agent sets issue status to `in_review`
-4. Agent exits heartbeat
-5. PM reassigns the issue to the Quality Reviewer agent (`PATCH /api/issues/{id}` with `assigneeAgentId`) before exiting the heartbeat — this triggers the Quality Reviewer's wake
-6. Reviewer reads document, comments findings
-7. If reviewer approves, approval proceeds to board
-8. Board approves or rejects
-9. On approval → original agent woken to continue
-10. On rejection → original agent woken with feedback in comments
+1. Agent writes deliverable to issue document:
+   - Spec: `PUT /api/issues/{id}/documents/spec` with `{format: "markdown", body, title}`
+   - Plan: `PUT /api/issues/{id}/documents/plan` (populates the top-level `.planDocument` field)
+2. Agent `PATCH /api/issues/{id}` with a single payload: `{"status": "in_review", "assigneeAgentId": "<reviewer-agent-id>"}`. Both fields in one call — separate PATCHes can race the reassign wake.
+3. Agent exits heartbeat.
+4. Reviewer wakes on `issue_assigned` with a fresh session (per-issue session keying — §5.4), reads the document via `GET /api/issues/{id}/documents/{key}`, posts findings as a comment using the `code-review` skill's structured format.
+5. Reviewer's last act on that heartbeat is a PATCH of its own:
+   - Approval: `{"status": "todo", "assigneeAgentId": "<board-or-original-author-id>"}` + a comment `@<board> APPROVED` (the board's cookie-auth session is the final approver)
+   - Rejection: `{"status": "todo", "assigneeAgentId": "<original-author-id>"}` + a findings comment. Original author (PM for spec, Tech Lead for plan) wakes on `issue_assigned`, reads findings, revises.
+6. The board's role is minimal: when a Reviewer-approved artifact surfaces in the board's assigned queue, the board reads the artifact + Reviewer comment, then either PATCHes `{"status": "in_progress", "assigneeAgentId": "<next-role-id>"}` to proceed (next-role = Tech Lead after spec, or Engineer after plan) or comments a rejection and reassigns back to the original author.
+
+**Note on Paperclip's approval table:** The `approvals` table + `POST /api/companies/:id/approvals` endpoint supports only three types — `hire_agent`, `approve_ceo_strategy`, `budget_override_required` (`packages/shared/src/constants.ts:203`). Adding a spec/plan approval type would require a server migration and is out of scope for Stage 5. The status+assignee PATCH above provides the same two-gate semantics using existing API surface. Raise an upstream feature request if first-class document approvals become important.
 
 ### 5.3 Comment-based Q&A pattern
 
@@ -233,15 +235,23 @@ Agents share context through:
 
 - **Issue description** — always visible
 - **Comment thread** — full history visible
-- **Issue documents** — `spec`, `plan` keys by convention
+- **Issue documents** — `spec`, `plan` keys by convention; top-level `.planDocument` on the issue for plan content
 - **Parent issue chain** — ancestor issues, goal, project
 - **Git history** — what prior subtasks produced
 
-Agents do NOT share memory across role handoffs. Role transitions are reassignments to different Paperclip agents; Paperclip resets the Claude session on `issue_assigned` wakes (`server/src/services/heartbeat.ts:715-730`), so each receiving role constructs its working context from the shared sources above.
+Agents do NOT share memory across role handoffs. Claude sessions are keyed per-issue in `agentTaskSessions` (`server/src/services/heartbeat.ts` `deriveTaskKey`), and the session reset policy (`shouldResetTaskSessionForWake`, same file lines 693-716) only force-resets on two conditions: `forceFreshSession === true` in the wake context, or `wakeReason === "issue_assigned"`.
 
-Within a single role, a subtask chain linked by `blockedByIssueIds` resumes the same Claude session by default — Paperclip's `issue_blockers_resolved` auto-wake preserves the conversation. Paperclipowers keeps fresh-per-subtask context via **progressive assignment**: Tech Lead creates subtasks with `assigneeAgentId: null` and sets the assignee only as each blocker clears, which fires `issue_assigned` (reset) instead of `issue_blockers_resolved` (resumption). Git state and workspace `cwd` still persist across the chain, so the receiving heartbeat sees the predecessor's commits; only the Claude conversation is reset.
+**Practical implication.** Each issue gets its own session slot for each agent:
 
-A per-agent `sessionPolicy` flag that injects `forceFreshSession: true` into dependent-wake payloads automatically — removing the need for progressive assignment — is tracked as a post-Stage 5 follow-up. Until then, `task-orchestration` (Stage 4) is responsible for progressive assignment on every subtask chain it produces.
+- First heartbeat on issue I for agent A: `freshSession: true` (no prior session for (A, I)).
+- Subsequent heartbeats on the SAME issue I for agent A, driven by wake reasons OTHER than `issue_assigned` (e.g. `issue_comment_mentioned`, `issue_status_changed`, `issue_commented`): session resumes from (A, I)'s stored sessionId.
+- Heartbeats on a DIFFERENT issue J for agent A: fresh session for (A, J) regardless of wake reason, because the stored session is keyed by I, not by A alone.
+
+This is why Stage 4 observed Tech Lead mention wakes as `freshSession: true` on different subtask issues (TL-2 on PAP-15, TL-3 on PAP-16, TL-4 on PAP-17 — three distinct issue keys, no shared session). Only TL-5 reused session because it fired on the parent PAP-14 (same issue as TL-1's session). Cost budget: treat per-subtask Tech Lead mention wakes as fresh sessions (same ~$0.2-0.3 range each as Stage 4 observed); expect session-resume savings only for agents that stay on one issue across many wakes (e.g., PM's Q&A rounds on one parent issue).
+
+Progressive assignment (task-orchestration RULE 1) remains unchanged — progressive PATCH forces `issue_assigned` wake on the assignee, which clears their per-issue session for that subtask regardless of whether they had one before. The mechanism still works; the reason it works now includes both the reset-on-`issue_assigned` path AND the per-issue-key isolation.
+
+A per-agent `sessionPolicy: forceFreshSession` flag that injects `forceFreshSession: true` into every wake payload — removing the need for progressive assignment on subtask chains — is tracked as a post-Stage 5 follow-up. Until then, `task-orchestration` (Stage 4) is responsible for progressive assignment on every subtask chain it produces.
 
 ## 6. Error Handling & Escalation
 
@@ -333,7 +343,7 @@ Development proceeds in 7 stages to validate the approach incrementally before c
 - **Stage 2 — Engineer-layer skills**: adapt `test-driven-development`, `systematic-debugging`, `code-review`
 - **Stage 3 — Validate Engineer end-to-end**: single Full-Stack Engineer agent in test company, small issue, confirm TDD+verification run correctly within heartbeats
 - **Stage 4 — Upstream skills**: adapt `brainstorming` (comment-based Q&A, approval gates), `writing-plans` (concrete schemas, dependency annotations), build `task-orchestration` (NEW), build `pipeline-dispatcher` (NEW)
-- **Stage 5 — Full pipeline test**: all 6 roles in test company, small real feature end-to-end; measure heartbeats, approvals, failure points
+- **Stage 5 — Full pipeline test**: hire PM (`role: "pm"`) and Reviewer (`role: "qa"`; single consolidated Reviewer per Stage 2 results §Resolved architectural decisions); adapt `brainstorming`, `writing-plans`, author new `pipeline-dispatcher`; update Tech Lead + Engineer skill sets; run a small real feature end-to-end (PM brainstorm → Reviewer spec review → board approval → Tech Lead plan → Reviewer plan review → board approval → Tech Lead task-orchestration → Engineer subtasks → Reviewer final combined review → board merge); measure heartbeats, approvals, failure points. Designer deferred to Stage 6 — `writing-plans` emits a per-slice `needsDesignPolish: boolean` hook (Stage 5 hardcodes `false`; Stage 6 flips it live without skill changes). **Reviewer consolidation is load-bearing:** `code-review` skill's four triggers already encode spec/plan/per-subtask/final as one role.
 - **Stage 6 — Designer role**: import ui-ux-pro-max, set up 21st.dev account, configure `.mcp.json` isolation, test Magic MCP + Figma MCP on UI polish task
 - **Stage 7 — Production rollout**: promote to one existing company, monitor costs and quality, refine
 
