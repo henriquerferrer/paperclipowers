@@ -102,36 +102,42 @@ Post your findings as a comment on the issue, using the exact format in `reviewe
 
 ### 1.5 Approval Gate Outcome
 
-Your next action depends on which trigger woke you:
+**Every approval routes through the board — never PATCH directly to the next role.** Spec §5.2 (amended in Stage 5) formalizes the board as the cross-check gate. See `../_shared/paperclip-conventions.md` § Approval gates for the canonical flow.
+
+There is no `POST /api/approvals/{id}/approve` endpoint for spec/plan/code review. Paperclip's `approvals` table supports only `hire_agent`, `approve_ceo_strategy`, `budget_override_required` (`packages/shared/src/constants.ts:203`). Use the status+assignee PATCH pattern below.
 
 **Spec or plan review (triggers 1-2) — if approving:**
-- The formal approval proceeds to the next approver (board). Your comment serves as context for the board's decision.
-- Call the approval endpoint: `POST /api/approvals/{id}/approve` (Stage 4's `_shared/paperclip-conventions.md` will formalize this).
+- Post a comment on the issue whose first line is exactly: `@<board-agent-name> APPROVED — <one-sentence summary>`. Your structured findings precede this comment; the `@<board> APPROVED` line is what the board parses.
+- PATCH the issue in ONE call: `{"status": "todo", "assigneeAgentId": "<board-agent-id>"}`. Both fields combined — separate PATCHes race.
+- Exit heartbeat. The board wakes on `issue_assigned`, reads the findings + the `APPROVED` comment, and PATCHes forward to the next role (Tech Lead after spec approval, Engineer-or-orchestrator after plan approval). Do NOT PATCH directly to the next role — that bypasses the board's cross-check (Stage 5 Anomaly 3 was three skipped gates for this reason).
 
 **Spec or plan review — if rejecting:**
-- Call `POST /api/approvals/{id}/reject` with your findings comment as context
-- The issue reassigns back to the document's author — PM for spec, Tech Lead for plan — who revises and creates a new approval
+- Post your findings comment using the `reviewer-prompt.md` format with explicit Critical / Important items.
+- PATCH the issue back to the original author in ONE call: `{"status": "todo", "assigneeAgentId": "<original-author-id>"}`. Original author is the PM for spec rejections, the Tech Lead for plan rejections.
+- Exit heartbeat. Author wakes on `issue_assigned`, revises the document, re-submits (which re-triggers your review via the same approval gate).
 
-**Per-subtask code review (trigger 3) — if approving:**
-- Post the findings comment with `Ready to merge: Yes`. The orchestrator transitions the subtask to its completed state, freeing dependent subtasks per `blockedByIssueIds` (exact transition mechanism formalized in Stage 5).
+**Per-subtask code review (trigger 3) — if approving** (Stage 7+; Stage 5-6 does not exercise per-subtask review):
+- Post the findings comment with `Ready to merge: Yes`.
+- PATCH the subtask: `{"status": "done"}`. The Notification Protocol's `issue_comment_mentioned` wake on the Tech Lead handles downstream unblocking; do NOT touch dependent subtasks' assignees yourself — that is the orchestrator's job.
 
 **Per-subtask code review — if rejecting:**
-- Set the subtask status back to `in_progress` or `todo`
-- Reassign to the subtask's last assignee (Engineer, or Designer if visual changes caused the regression) via `PATCH /api/issues/{id}` with `assigneeAgentId`
-- Your findings comment provides the specific fixes; reassignment triggers the reviewee's next heartbeat
+- PATCH the subtask in ONE call: `{"status": "in_progress", "assigneeAgentId": "<last-assignee-id>"}` (Engineer, or Designer if visual changes caused the regression).
+- Your findings comment provides the specific fixes; the `issue_assigned` wake triggers the reviewee's next heartbeat with a fresh session (per-issue session keying, spec §5.4).
 
 **Final combined review (trigger 4) — if approving:**
-- Create the PR via the workspace's git integration (exact mechanism varies per deployment; typically `git push` + `gh pr create` in the execution workspace)
-- Mark the parent issue `done`
+- Post a comment: `@<board-agent-name> APPROVED — final combined review complete. <one-sentence summary>. Ready to merge.`
+- PATCH the parent in ONE call: `{"status": "todo", "assigneeAgentId": "<board-agent-id>"}`. The board wakes on `issue_assigned`, verifies the review, then owns the PR / merge step and the transition to `done`. Do NOT mark the parent `done` yourself — the board's touchpoint on PR merge is the final gate (`paperclip-conventions.md` § Approval gates). Stage 5 Anomaly 3 included a Reviewer marking the parent `done` directly; that stripped the final board gate.
 
 **Final combined review — if rejecting:**
-- Identify which subtask introduced the failing behavior — use `git log` to find the offending commit, map commits to subtasks via the commit-message convention or the subtask's branch
-- Re-open that specific subtask (`in_progress`), reassign it to its original assignee with findings
-- The parent stays in `in_review` until the re-opened subtask completes and re-passes per-subtask QA (trigger 3 on the re-opened subtask)
+- Identify which subtask introduced the failing behavior — use `git log` to find the offending commit, map commits to subtasks via the commit-message convention or the subtask's branch.
+- Re-open that subtask: PATCH `{"status": "in_progress", "assigneeAgentId": "<original-assignee-id>"}`.
+- Do NOT PATCH the parent's status yourself while a child is being re-worked. The parent stays in `in_review`; when the re-opened subtask completes, the final-review wake re-fires on you.
 
 **For any trigger — if finding architectural issues** that indicate the plan itself is wrong:
-- Escalate to the Tech Lead via reassignment, not back to the Engineer
-- Comment explaining why this is a plan-level issue, not an implementation-level issue
+- Escalate to the Tech Lead via reassignment, not back to the Engineer.
+- Comment explaining why this is a plan-level issue, not an implementation-level issue.
+
+**Red flag — skipping the board.** If you catch yourself PATCHing directly to the Tech Lead after spec approval, the Engineer after plan approval, or marking the parent `done` yourself after final approval: STOP. You are bypassing the board. Post the `@<board> APPROVED` comment and PATCH to the board instead. This is Stage 5 Anomaly 3 — the pre-amendment skill text said "proceeds to the next approver (board)" but the imperative "Call the approval endpoint" misled the model into short-circuiting. Three skipped gates in one pipeline run. The board's gate is what catches Reviewer misjudgments (e.g., approving a low-quality spec); stripping it is invisible risk.
 
 ## Part 2: Receiving Review Feedback
 

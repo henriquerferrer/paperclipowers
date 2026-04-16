@@ -79,7 +79,7 @@ Every subtask is a `POST /api/companies/:company-id/issues` call. The required f
 | `parentId` | The parent feature issue id |
 | `assigneeAgentId` | Engineer agent id for the FIRST subtask in a chain; `null` for every follower |
 | `blockedByIssueIds` | `[]` for the head; `[<predecessor-id>]` for followers |
-| `status` | `"todo"` |
+| `status` | `"todo"` — always, for EVERY subtask including followers with non-empty `blockedByIssueIds`. `"blocked"` is a RUNTIME-SET status (the assignee transitions to `blocked` when it reports a mid-work blocker via the Notification Protocol); it is NEVER a creation-time status, even when the subtask has predecessors. Stage 5 Anomaly 5. |
 
 ### Reading the `needsDesignPolish` flag per slice
 
@@ -141,6 +141,15 @@ Write `/tmp/subtask-2.json`:
 ```
 
 POST the same way. The response JSON contains the new subtask's `id`; capture each one so the next POST can reference it as a predecessor.
+
+### Post-POST verification (RULE 1 + Anomaly 5 self-check)
+
+After you POST every subtask in the chain, GET `/api/companies/<company-id>/issues?parentId=<parent-id>&limit=50` and verify BEFORE exiting the heartbeat:
+
+- **Exactly ONE subtask** has a non-null `assigneeAgentId` — the chain head. Every follower has `assigneeAgentId: null`. Stage 5 Anomaly 4: PAP-21 was created with `assigneeAgentId` pre-set; the Engineer happened to be idle so the pipeline worked, but a paused-target race would have deadlocked (RULE 2 exists precisely for this class of bug).
+- **Every subtask has `status: "todo"`** — NOT `"blocked"`. Even followers with non-empty `blockedByIssueIds` create with `todo`. Stage 5 Anomaly 5: PAP-21 was created with `status: "blocked"`; `issue_blockers_resolved` rescued it, but `blocked → in_progress` is not the intended state-machine path.
+
+If either invariant is violated, PATCH the offending subtask(s) to compliant state (`assigneeAgentId: null` for non-head subtasks; `status: "todo"` for anything at creation) BEFORE exiting the heartbeat. Do not rely on luck — an idle target or an auto-wake fallback — to rescue a malformed graph.
 
 ## Progressive Assignment — RULE 1
 
