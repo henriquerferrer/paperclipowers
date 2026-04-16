@@ -64,3 +64,10 @@
 - **§ When to Invoke wake #3 gained a Stage 5 note.** Per-subtask Reviewer handoff intentionally unwired in Stage 5.
 
 Pin SHA for Stage 5: `ce32bbdfa3d2a52462ae68fa9d6248eab681bbff`.
+
+## Stage 5 follow-up (2026-04-16) — Anomaly 4 + 5 amendments
+
+- **§ Creating the Subtask Graph field-table `status` row HARDENED.** Explicit caveat: `"todo"` always at creation, even for followers with non-empty `blockedByIssueIds`; `"blocked"` is a runtime-set status only. (Stage 5 Anomaly 5: PAP-21 was created with `status: "blocked"`; `issue_blockers_resolved` rescued it, but the state-machine path was wrong.)
+- **§ Post-POST verification (RULE 1 + Anomaly 5 self-check) ADDED** between the POST recipes and § Progressive Assignment. Mandates a GET-parent-children check after POSTing to verify `assigneeAgentId: null` on all followers and `status: "todo"` on all subtasks. (Stage 5 Anomaly 4: PAP-21 was created with `assigneeAgentId` pre-set; only an idle target kept the pipeline running.)
+
+Pin SHA for Stage 5 follow-up: `3e5c3b7648108afe671fd05de825c52523a4df79`.
