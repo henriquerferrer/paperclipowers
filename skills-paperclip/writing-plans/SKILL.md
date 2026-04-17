@@ -51,7 +51,7 @@ Every slice in your plan must declare its concrete inputs and outputs. This is t
 ### Slice N: <Short imperative title>
 
 **Depends on slices:** [M, K] or "none"
-**needsDesignPolish:** false
+**Assignee role:** Engineer (default; omit unless the slice goes to a different role — see § Designer slices below)
 
 **Inputs:**
 ```ts
@@ -83,7 +83,45 @@ interface SliceNOutput {
 
 Use TypeScript type syntax even for non-TS projects — it's a universal contract language. For Python projects, the Engineer translates at implementation time (TypedDict, dataclass, Pydantic) — that's cheap.
 
-**`needsDesignPolish` flag.** Stage 5: always `false`. Stage 6 (Designer integration): set `true` on UI-surface slices where a design-polish follow-up should be scheduled after the Engineer's implementation lands. `task-orchestration` reads this flag per slice and creates a follow-up Designer subtask only when `true`. Stage 5 hardcodes `false` because the Designer agent doesn't exist yet.
+## Designer slices (Stage 6.5)
+
+When a feature has UI output that would benefit from visual polish beyond what the Engineer's default styling produces, add an explicit Designer slice to the plan. The Tech Lead judges when this belongs — there is no heuristic and no plan-schema flag. If the feature's UI warrants polish, write the slice; if not, don't.
+
+Template:
+
+````markdown
+### Slice N: Polish UI for <feature-name>
+
+**Depends on slices:** [<engineer-slice-number(s)>]
+**Assignee role:** Designer
+
+**Goal.** Visual polish of the UI produced by the named Engineer slice(s). No backend or logic changes.
+
+**Inputs:**
+```
+// Informal: the working UI and test suite produced by the Engineer slice(s).
+// No typed input schema — the Designer reads the parent's plan document + the
+// Engineer's commits (`git log`) to ground the polish work.
+```
+
+**Outputs:**
+```
+// - Modifies: <same frontend file paths the Engineer wrote to>
+// - All Engineer slice tests pass unchanged.
+// - New assets only if the polish requires them (list explicitly).
+```
+
+**Acceptance criteria:**
+- All Engineer slice tests pass unchanged.
+- <visual criteria — specific to the feature, e.g., "uses system font stack", "table is readable at 320px width", "heading hierarchy reflects spec §Interface">
+
+**Notes for the Designer.**
+- The Designer agent has `ui-ux-pro-max` in its skills and should use `21st_magic_component_inspiration` + `21st_magic_component_refiner` to ground decisions.
+- Do NOT use `21st_magic_component_builder` — it opens a browser and blocks in a headless container.
+- The shared project workspace means Designer's commits land on the same HEAD as the Engineer's commits. No rebase required.
+````
+
+The Stage 6 `needsDesignPolish: boolean` per-slice flag was retracted in Stage 6.5. Do NOT declare any `needsDesignPolish` field on slices. `task-orchestration` creates a Designer subtask iff the plan contains a slice whose `Assignee role` is `Designer`; the presence of the slice is the signal.
 
 ## Plan Document Structure
 
@@ -137,7 +175,7 @@ Self-review before PUT:
 3. **Schema concreteness** — every slice has non-prose Inputs and Outputs blocks. "A user object" is not a schema; `{id: string; email: string; createdAt: string}` is.
 4. **Dependency annotations** — `Depends on slices: [M, K]` present on every slice. Empty list OK for the head of a chain; explicit is better than implicit.
 5. **Acceptance criteria testable** — each criterion is specific enough to become a concrete test assertion. "Works correctly" is not testable.
-6. **needsDesignPolish present** — every slice declares the flag explicitly, even if `false`. Missing flag = Task 7 task-orchestration will fail on the decomposition step.
+6. **Role annotation correct** — Engineer slices omit `Assignee role` (default); Designer slices explicitly declare `Assignee role: Designer` per § Designer slices. No `needsDesignPolish` field anywhere (retracted Stage 6.5).
 7. **No implementation code** — you're writing the Tech Lead contract, not the Engineer's implementation. Resist the urge to prototype in the plan.
 8. **Cross-slice tests specified** — any test that spans multiple slices is called out in the Cross-slice Testing section, not in any individual slice.
 
@@ -173,7 +211,7 @@ PATCH issue back to `{"status": "in_progress", "assigneeUserId": "<board-user-id
 - @-mentioning yourself in the announcement comment — self-wake loop.
 - Separate PATCHes for status and assignee — race. Combine.
 - Writing the plan to a filesystem path (`docs/plans/...`) — that's upstream CLI. Use the `plan` issue document.
-- Skipping `needsDesignPolish` on any slice — Task 7 task-orchestration reads this flag; missing = decomposition fails.
+- Declaring a `needsDesignPolish` field on any slice — retracted Stage 6.5. Express Designer involvement via an explicit Designer slice per § Designer slices instead.
 - Authoring a plan with a single slice if the feature actually has ≥2 vertical slices. Compressing slices hides dependencies.
 
 ## Integration
@@ -181,7 +219,7 @@ PATCH issue back to `{"status": "in_progress", "assigneeUserId": "<board-user-id
 **Companion Paperclip skills:**
 
 - `pipeline-dispatcher` — routes you into this skill when the feature reaches the plan phase.
-- `task-orchestration` — consumes your plan on the NEXT wake (after board approves), reads `.planDocument.body`, decomposes into subtasks. Your plan's slice granularity and `needsDesignPolish` flags are its inputs.
+- `task-orchestration` — consumes your plan on the NEXT wake (after board approves), reads `.planDocument.body`, decomposes into subtasks. Your plan's slice granularity and `Assignee role` annotations are its inputs; each slice becomes one subtask assigned to the named role (or Engineer by default).
 - `code-review` (Reviewer mode) — evaluates your plan via the same structured-findings format as code review. Trigger 2 (plan review) in their skill.
 
 **Companion upstream concepts (dropped from this adaptation):**
