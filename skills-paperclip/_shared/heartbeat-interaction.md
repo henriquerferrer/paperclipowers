@@ -52,3 +52,19 @@ Every POST/PUT/PATCH with a JSON body MUST be built as a file first, then posted
 2. `curl --data-binary @/tmp/<name>.json` — NOT `-d @/tmp/...` (which applies form-url-encoded rules and can strip `\r\n`).
 
 Stage 3 Anomaly 2 documented the failure mode (payload mangled silently, JSON still technically valid, bug surfaces only in the persisted data). Stage 4 validation confirmed the Write + `--data-binary` idiom is correct.
+
+## Unpause before PATCH (operator-side rule)
+
+When an operator action sequence involves both unpausing agents and PATCHing issue assignments that will fire a wake on those agents, the UNPAUSE must come FIRST. Paperclip's heartbeat scheduler silently drops wakes enqueued against paused agents (`server/src/services/heartbeat.ts` emits `WARN: failed to wake agent on issue update: Agent is not invokable in its current state` and does NOT re-fire the wake on subsequent unpause).
+
+Order:
+
+1. For every agent that will receive a wake from the upcoming PATCHes: `POST /api/agents/<id>/resume` first.
+2. Verify `GET /api/agents/<id>` returns `status: "idle"` (not `paused`) for each.
+3. THEN PATCH the issue assignments.
+
+If you PATCH-before-unpause, the pipeline stalls silently. Workaround if stalled: `PATCH /api/issues/<id>` with `{"assigneeAgentId": null}`, then PATCH back to the intended assignee — the second PATCH re-fires the wake on the (now-unpaused) agent. Prefer the correct order.
+
+Any stage plan that hires agents, resumes agents, or flips assignments on a batch of issues must reference this rule in its Tasks preamble. Stage 6 Anomaly 11 traced to Stage 6 plan Task 7 violating this (PATCH-before-unpause dropped the wake; pipeline sat dormant 30 minutes until an unassign→reassign cycle re-fired it).
+
+This rule is operator-side — it does not affect an agent inside a heartbeat. Agents PATCH issues routinely as part of their normal workflow, and the target agents are presumed runnable. If you, as an agent, are about to PATCH an assignment and want to be defensive: run `GET /api/agents/<target>` first (which `task-orchestration § RULE 2` already requires). That check both verifies non-paused status AND detects a paused target before the silent drop.
