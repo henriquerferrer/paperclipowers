@@ -71,3 +71,10 @@ Pin SHA for Stage 5: `ce32bbdfa3d2a52462ae68fa9d6248eab681bbff`.
 - **§ Post-POST verification (RULE 1 + Anomaly 5 self-check) ADDED** between the POST recipes and § Progressive Assignment. Mandates a GET-parent-children check after POSTing to verify `assigneeAgentId: null` on all followers and `status: "todo"` on all subtasks. (Stage 5 Anomaly 4: PAP-21 was created with `assigneeAgentId` pre-set; only an idle target kept the pipeline running.)
 
 Pin SHA for Stage 5 follow-up: `3e5c3b7648108afe671fd05de825c52523a4df79`.
+
+## Stage 5 follow-up (2026-04-17) — field-split correctness patch
+
+- **§ The Process Step 1 board-return PATCH corrected** from `assigneeAgentId: "<board-id>"` to `assigneeUserId: "<board-user-id>", assigneeAgentId: null`. Paperclip API validates `assigneeAgentId` as UUID; the board is a better-auth user (non-UUID), so the PATCH must target `assigneeUserId`. Same rule applied to every other board-routing PATCH across five skill files + spec §5.2. See `_shared/paperclip-conventions.md` § Field-split rule for the canonical statement.
+- Stage 5 never exposed this because Anomaly 3 was the Reviewer skipping the board entirely — no board PATCH ever fired. The initial Stage 5 follow-up (3e5c3b7) inherited the bug from spec §5.2; both now fixed together.
+
+Pin SHA for Stage 5 follow-up (field-split correction): `86f0e0c2d12b038593913293b6dc79ea5db24c47`.
