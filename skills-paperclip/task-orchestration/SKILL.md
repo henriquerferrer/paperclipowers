@@ -93,6 +93,29 @@ Each slice in `.planDocument.body` declares a `needsDesignPolish: false | true` 
 
 Stage 5 behaviour: always `false`, no Designer subtask spawned. Stage 6 will add: if `true`, create an additional follow-up subtask assigned to the Designer that depends on the Engineer's subtask completion. Stage 5 leaves this as a read-only surface to keep the plan→subtask mapping traceable.
 
+### Stage 6 activation — spawning a Designer subtask when `needsDesignPolish: true`
+
+When a slice in the plan has `needsDesignPolish: true`, create TWO subtasks for that slice, not one:
+
+1. **Engineer subtask** — backend + baseline UI implementation, identical to a `needsDesignPolish: false` slice. All acceptance criteria from the slice's Required test cases belong here.
+2. **Designer follow-up subtask** — visual polish on the working UI produced by the Engineer. Created immediately after the Engineer subtask, before you exit the heartbeat. Fields:
+   - `parentId`: the feature parent issue id (same as the Engineer subtask)
+   - `blockedByIssueIds: [<engineer-subtask-id>]` — Designer waits for Engineer's completion
+   - `assigneeAgentId: null` — progressive assignment (RULE 1); the Tech Lead PATCHes the Designer id when the Engineer subtask reaches terminal status
+   - `status: "todo"` — per § Creating the Subtask Graph field-table caveat, NOT `"blocked"`
+   - `title`: "Polish UI for <slice-name> (from <engineer-subtask-identifier>)"
+   - `description`: uses the Subtask Description Template, with `## Goal` scoped to visual polish, `## Required test cases` listing (a) "all Engineer subtask tests still pass" + (b) visual fidelity criteria derived from the spec's Interface section, `## Required implementation files` listing the same frontend file paths the Engineer wrote to (plus any new asset paths), and the standard Notification Protocol.
+
+When the Engineer subtask completes (you wake on `issue_comment_mentioned` via RULE 3), progressively assign the Designer subtask using the same RULE 1 + RULE 2 procedure as any follower: GET the Designer's agent status, branch per the paused-target table, PATCH assigneeAgentId if safe.
+
+In § End-of-Feature Review: wait for BOTH Engineer + Designer subtasks to be terminal before transitioning parent to `in_review`. This already falls out of the existing "all children terminal" check — no separate condition needed as long as the Designer subtask was created with the correct `parentId`.
+
+**Slice with `needsDesignPolish: false`:** create only the Engineer subtask. Stage 5 behaviour; unchanged.
+
+**Invariant:** for a slice with `needsDesignPolish: true`, the Engineer subtask is the chain head of its pair, the Designer subtask is the follower. Do NOT pre-assign the Designer subtask at creation time; progressive assignment is load-bearing (see RULE 1 and the Stage 5 Anomaly 4 note in § Post-POST verification).
+
+**Design-break routing (spec §6.4):** if the Reviewer's final combined review flags a Designer-caused regression (broken tests on code Designer touched), the rejected subtask is the Designer one, not the Engineer one. This is already handled by `code-review/SKILL.md §1.5 Final combined review — if rejecting` which reassigns the specific offending subtask; no amendment needed here. The routing flows because the Reviewer identifies the offending commit via `git log` and maps it to the subtask that authored the commit.
+
 ### Curl recipe idiom
 
 Every payload you submit MUST be written to a file first, then POSTed with `curl --data-binary @file`. Do NOT build payloads with `echo ... | curl -d @-` or inline heredocs piped to curl. Reason: zsh's `echo` interprets `\n` as a literal newline, which turns multi-line JSON strings into JSON parse errors, and `curl -d` applies `application/x-www-form-urlencoded` semantics that can strip bytes. This is Stage 3 Anomaly 2.
@@ -146,7 +169,7 @@ POST the same way. The response JSON contains the new subtask's `id`; capture ea
 
 After you POST every subtask in the chain, GET `/api/companies/<company-id>/issues?parentId=<parent-id>&limit=50` and verify BEFORE exiting the heartbeat:
 
-- **Exactly ONE subtask** has a non-null `assigneeAgentId` — the chain head. Every follower has `assigneeAgentId: null`. Stage 5 Anomaly 4: PAP-21 was created with `assigneeAgentId` pre-set; the Engineer happened to be idle so the pipeline worked, but a paused-target race would have deadlocked (RULE 2 exists precisely for this class of bug).
+- **Exactly ONE subtask per chain** has a non-null `assigneeAgentId` — the chain head. Every follower has `assigneeAgentId: null`. Stage 5 Anomaly 4: PAP-21 was created with `assigneeAgentId` pre-set; the Engineer happened to be idle so the pipeline worked, but a paused-target race would have deadlocked (RULE 2 exists precisely for this class of bug).
 - **Every subtask has `status: "todo"`** — NOT `"blocked"`. Even followers with non-empty `blockedByIssueIds` create with `todo`. Stage 5 Anomaly 5: PAP-21 was created with `status: "blocked"`; `issue_blockers_resolved` rescued it, but `blocked → in_progress` is not the intended state-machine path.
 
 If either invariant is violated, PATCH the offending subtask(s) to compliant state (`assigneeAgentId: null` for non-head subtasks; `status: "todo"` for anything at creation) BEFORE exiting the heartbeat. Do not rely on luck — an idle target or an auto-wake fallback — to rescue a malformed graph.

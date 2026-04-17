@@ -28,7 +28,7 @@ Do NOT read skill files yourself via filesystem — the skills are already in yo
 | Tech Lead (`role: "engineer"`, named `*tech-lead*`) | `writing-plans`, `task-orchestration` | `code-review` (receiving, when Reviewer rejects your plan) |
 | Engineer (`role: "engineer"`, not Tech Lead) | `test-driven-development`, `systematic-debugging`, `verification-before-completion` | `code-review` (receiving, when Reviewer rejects your subtask) |
 | Reviewer (`role: "qa"`) | `code-review` (performing) | — |
-| Designer (`role: "designer"`, Stage 6 only) | `frontend-design`, `ui-ux-pro-max`, `verification-before-completion` | `code-review` (receiving) |
+| Designer (`role: "designer"`) | `ui-ux-pro-max`, `verification-before-completion` | `code-review` (receiving, when Reviewer rejects visual changes) |
 
 Role disambiguation for `role: "engineer"`: if your agent's name contains `tech-lead`, you are the Tech Lead. Otherwise you are an Engineer. This naming convention is mandated by the company operator because Paperclip's role enum has no `tech_lead` value.
 
@@ -64,9 +64,20 @@ Match your current state to a skill:
   - Parent issue with all children terminal → Trigger 4 (final combined review)
   - Single subtask (has `parentId`, no children) — Trigger 3 (per-subtask review). Stage 5 does NOT wire per-subtask review into the pipeline (Reviewer only wakes at the three approval gates); if you see this trigger in Stage 5, treat it as an anomaly and escalate.
 
-### If you are the Designer (Stage 6 only)
+### If you are the Designer
 
-Not yet active. Skill row reserved; `frontend-design` + `ui-ux-pro-max` imports happen in Stage 6.
+- `wakeReason: "issue_assigned"` on a subtask (parent non-null, status: `todo`) whose title indicates a polish task (e.g., starts with "Polish UI for") OR whose description has a `## Goal` section scoped to visual polish → invoke `ui-ux-pro-max` for the design reasoning + Magic/Figma MCP usage, then `verification-before-completion` before your Notification Protocol completion comment.
+
+  Workflow inside the heartbeat:
+  1. Read the subtask description + the plan document on the parent (`GET /api/issues/<parent>/documents/plan`). The plan's slice will tell you what acceptance criteria to satisfy.
+  2. Read the Engineer's commits on the same feature branch (`git log <base>..HEAD` in your cwd) to see what UI artifacts exist to polish.
+  3. Use Magic MCP to generate polished component candidates. Use Figma MCP if the spec references a Figma file or if generating from an existing design source. Both MCP servers are scoped to your cwd only (via `.mcp.json`); other agents don't have access.
+  4. Apply the polish iteratively: change → run Engineer's test suite → confirm still green → commit. Reversibility matters; a Designer commit that breaks Engineer tests is a Code Review rejection per spec §6.4.
+  5. Post the Notification Protocol completion comment with the SHAs of your polish commits + transition the subtask to `done`.
+
+- `wakeReason: "issue_assigned"` on a subtask whose status reverted from `in_review` to `in_progress` or `todo` with Reviewer findings citing visual regressions or test breakage → invoke `code-review` Part 2 (receiving) BEFORE resuming polish work. Re-read the Engineer's latest tests to understand what broke; fix the polish without reverting scope.
+
+- `wakeReason: "issue_commented"` on a subtask where a comment contains a Tech Lead reply to your NEEDS_CONTEXT → continue work; the reply is context, not a new task.
 
 ## Heartbeat-Mode Disciplines
 
