@@ -249,7 +249,7 @@ Agents do NOT share memory across role handoffs. Claude sessions are keyed per-i
 - Subsequent heartbeats on the SAME issue I for agent A, driven by wake reasons OTHER than `issue_assigned` (e.g. `issue_comment_mentioned`, `issue_status_changed`, `issue_commented`): session resumes from (A, I)'s stored sessionId.
 - Heartbeats on a DIFFERENT issue J for agent A: fresh session for (A, J) regardless of wake reason, because the stored session is keyed by I, not by A alone.
 
-This is why Stage 4 observed Tech Lead mention wakes as `freshSession: true` on different subtask issues (TL-2 on PAP-15, TL-3 on PAP-16, TL-4 on PAP-17 — three distinct issue keys, no shared session). Only TL-5 reused session because it fired on the parent PAP-14 (same issue as TL-1's session). Cost budget: treat per-subtask Tech Lead mention wakes as fresh sessions (same ~$0.2-0.3 range each as Stage 4 observed); expect session-resume savings only for agents that stay on one issue across many wakes (e.g., PM's Q&A rounds on one parent issue).
+This is why Stage 4 observed Tech Lead mention wakes as `freshSession: true` on different subtask issues (TL-2 on PAP-15, TL-3 on PAP-16, TL-4 on PAP-17 — three distinct issue keys, no shared session). Only TL-5 reused session because it fired on the parent PAP-14 (same issue as TL-1's session). Expect per-subtask Tech Lead mention wakes to run as fresh sessions; session resume occurs only for agents that stay on one issue across many wakes (e.g., PM's Q&A rounds on one parent issue).
 
 Progressive assignment (task-orchestration RULE 1) remains unchanged — progressive PATCH forces `issue_assigned` wake on the assignee, which clears their per-issue session for that subtask regardless of whether they had one before. The mechanism still works; the reason it works now includes both the reset-on-`issue_assigned` path AND the per-issue-key isolation.
 
@@ -279,12 +279,6 @@ A per-agent `sessionPolicy: forceFreshSession` flag that injects `forceFreshSess
 
 - Caught by Code Reviewer in combined review
 - Subtask routed back to Designer, not Engineer (Designer owns visual changes)
-
-### 6.5 Budget enforcement
-
-- 80% monthly budget → conservative mode (critical tasks only)
-- 100% → auto-pause
-- First lever for cost reduction: batch brainstorming questions, reduce Q&A rounds
 
 ## 7. Per-Agent Configuration
 
@@ -359,7 +353,6 @@ The adapted pipeline is successful when:
 - No Q&A heartbeats are wasted due to unclear questions (≤3 rounds in brainstorming on average)
 - Implementations match specs and plans without drift (verified by Quality Reviewer)
 - QA catches any divergence before PR creation
-- Token cost per feature is measurable and within budget tolerances
 - Designer polish improves UI quality without breaking backend functionality
 - Escalations reach the board only for genuine blockers, not routine work
 
