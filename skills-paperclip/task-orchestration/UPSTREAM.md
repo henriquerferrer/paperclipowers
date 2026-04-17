@@ -78,3 +78,10 @@ Pin SHA for Stage 5 follow-up: `3e5c3b7648108afe671fd05de825c52523a4df79`.
 - Stage 5 never exposed this because Anomaly 3 was the Reviewer skipping the board entirely — no board PATCH ever fired. The initial Stage 5 follow-up (3e5c3b7) inherited the bug from spec §5.2; both now fixed together.
 
 Pin SHA for Stage 5 follow-up (field-split correction): `86f0e0c2d12b038593913293b6dc79ea5db24c47`.
+
+## Stage 6 (2026-04-17) — Designer role activation
+
+- **§ Stage 6 activation — spawning a Designer subtask when `needsDesignPolish: true` ADDED** to § Reading the needsDesignPolish flag per slice. Turns the Stage 5 read-only surface into a live orchestration branch: Engineer+Designer subtask pair with progressive assignment, blockedBy edge between them, same End-of-Feature check unchanged.
+- **§ Post-POST verification subsection UPDATED** — "Exactly ONE subtask" → "Exactly ONE subtask per chain" to cover multi-chain cases introduced by Engineer→Designer pairs.
+
+Pin SHA for Stage 6: `15ecff28fa048f3435cdd83e27673d7817ca203a`.
