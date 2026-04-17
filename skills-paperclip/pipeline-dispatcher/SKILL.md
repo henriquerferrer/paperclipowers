@@ -66,14 +66,26 @@ Match your current state to a skill:
 
 ### If you are the Designer
 
-- `wakeReason: "issue_assigned"` on a subtask (parent non-null, status: `todo`) whose title indicates a polish task (e.g., starts with "Polish UI for") OR whose description has a `## Goal` section scoped to visual polish → invoke `ui-ux-pro-max` for the design reasoning + Magic/Figma MCP usage, then `verification-before-completion` before your Notification Protocol completion comment.
+- `wakeReason: "issue_assigned"` on a subtask (parent non-null, status: `todo`) whose title indicates a polish task (e.g., starts with "Polish UI for") OR whose description has a `## Goal` section scoped to visual polish → invoke `ui-ux-pro-max` for the design reasoning + 21st.dev Magic MCP usage, then `verification-before-completion` before your Notification Protocol completion comment.
+
+  **Notification Protocol (required).** When your polish work reaches a terminal state, post a single comment on the subtask issue containing:
+
+  `@<tech-lead-name> DONE — <one-sentence summary>. Commits: <sha1>[, <sha2>...].`
+
+  Substitute `<tech-lead-name>` with the Tech Lead's agent name — look for a `## Notification Protocol` section near the bottom of the subtask description, which names the Tech Lead explicitly. Then transition the subtask to `done`. This `@mention` is the Tech Lead's per-completion wake signal via `issue_comment_mentioned`; without it, the pipeline deadlocks until an operator or `issue_children_completed` backstop unblocks it (Stage 6 Anomaly 7).
+
+  On a blocker instead of success: `@<tech-lead-name> BLOCKED — <what blocks>. Tried: <what you tried>. Need: <what would unblock>.` + set subtask status to `blocked`.
+
+  On ambiguity that needs clarification before proceeding: `@<tech-lead-name> NEEDS_CONTEXT — <the question>.` Leave status `in_progress` and wait for the Tech Lead's reply comment (wake on `issue_commented`).
+
+  Never @-mention yourself — that fires `issue_comment_mentioned` on YOU and re-enters this skill. Never @-mention the board directly from a Designer subtask; the Tech Lead routes escalations upward per `task-orchestration/SKILL.md`.
 
   Workflow inside the heartbeat:
   1. Read the subtask description + the plan document on the parent (`GET /api/issues/<parent>/documents/plan`). The plan's slice will tell you what acceptance criteria to satisfy.
-  2. Read the Engineer's commits on the same feature branch (`git log <base>..HEAD` in your cwd) to see what UI artifacts exist to polish.
-  3. Use Magic MCP to generate polished component candidates. Use Figma MCP if the spec references a Figma file or if generating from an existing design source. Both MCP servers are scoped to your cwd only (via `.mcp.json`); other agents don't have access.
+  2. Read the Engineer's commits on the same feature branch (`git log <base>..HEAD` in your cwd) to see what UI artifacts exist to polish. In Paperclip's default setup, your cwd is the shared project workspace (`project_primary` per `_shared/paperclip-conventions.md` § Workspace model) — the same cwd the Engineer used. The Engineer's commits are on your `HEAD`.
+  3. Use the 21st.dev Magic MCP server to generate polished component candidates. The server is registered in the project's shared `.mcp.json`; its tools appear in your tool list as `mcp__21st-dev-magic__*`. If those tools are NOT present in your Claude Code init, the MCP server failed to connect — note it in your completion comment under "Concerns" and proceed with hand-written polish rather than failing the subtask.
   4. Apply the polish iteratively: change → run Engineer's test suite → confirm still green → commit. Reversibility matters; a Designer commit that breaks Engineer tests is a Code Review rejection per spec §6.4.
-  5. Post the Notification Protocol completion comment with the SHAs of your polish commits + transition the subtask to `done`.
+  5. Post the Notification Protocol completion comment (see above) with the SHAs of your polish commits and transition the subtask to `done`.
 
 - `wakeReason: "issue_assigned"` on a subtask whose status reverted from `in_review` to `in_progress` or `todo` with Reviewer findings citing visual regressions or test breakage → invoke `code-review` Part 2 (receiving) BEFORE resuming polish work. Re-read the Engineer's latest tests to understand what broke; fix the polish without reverting scope.
 
