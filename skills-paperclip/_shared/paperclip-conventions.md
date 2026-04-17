@@ -35,8 +35,12 @@ Paperclip's `approvals` table only supports three types: `hire_agent`, `approve_
 2. Author PATCHes issue: `{"status": "in_review", "assigneeAgentId": "<reviewer-id>"}` in ONE call.
 3. Author exits heartbeat.
 4. Reviewer wakes on `issue_assigned` (fresh session — per-issue session keying, see `heartbeat-interaction.md`), reads the document, posts findings as a comment (use `code-review` skill's format).
-5. Reviewer's last act is a PATCH: `{"status": "todo", "assigneeAgentId": "<next-role-id>"}` where next-role is the board on approval or the original author on rejection.
-6. The board (or original author) wakes on `issue_assigned`, reads the findings, either comments approval + PATCHes forward or comments rejection + PATCHes back.
+5. Reviewer's last act is a PATCH whose field choice depends on the target:
+   - **Approval (route to board):** `{"status": "todo", "assigneeUserId": "<board-user-id>", "assigneeAgentId": null}`. The board is a Paperclip USER (the cookie-auth operator), not an agent; `assigneeUserId` takes the better-auth user-id and `assigneeAgentId` must be nulled. The server validates `assigneeAgentId` as a UUID, which the board's user-id is not — mixing them up returns a 400 validation error.
+   - **Rejection (route to original author):** `{"status": "todo", "assigneeAgentId": "<original-author-agent-id>", "assigneeUserId": null}`. Original author is the PM (spec rejection) or Tech Lead (plan rejection) — both agents with UUID ids — so `assigneeAgentId` is the right field.
+6. The board (or original author) wakes on `issue_assigned`, reads the findings, either comments approval + PATCHes forward or comments rejection + PATCHes back. Board-forward PATCHes target an agent, so they go back to `assigneeAgentId: "<next-role-agent-id>"` with `assigneeUserId: null`.
+
+**Field-split rule (load-bearing).** Any PATCH that routes an issue to the board uses `assigneeUserId`; any PATCH that routes to an agent uses `assigneeAgentId`. Null the opposite field in the same call to avoid leaving stale state. Stage 5 follow-up (2026-04-17) surfaced this after the initial Anomaly 3 amendment was drafted with the wrong field; the pre-amendment skill text had papered over it because Stage 5 never actually PATCHed to the board.
 
 The board's role is a reviewer-of-reviewers: the board's cookie-auth PATCH is the final decision. In the end-to-end pipeline, the board's touchpoints are: initial issue creation, spec approval (after Reviewer findings), plan approval (after Reviewer findings), PR merge (after Reviewer final combined review).
 

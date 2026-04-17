@@ -163,7 +163,7 @@ C. Proceed with one plan anyway (I'll flag in the plan's Scope section that this
 Which?
 ```
 
-PATCH issue back to `{"status": "in_progress", "assigneeAgentId": "<board-id>"}`, exit heartbeat. Wait for the board's decision.
+PATCH issue back to `{"status": "in_progress", "assigneeUserId": "<board-user-id>", "assigneeAgentId": null}` (the board is a Paperclip user — see `../_shared/paperclip-conventions.md` § Field-split rule), exit heartbeat. Wait for the board's decision.
 
 ## Red Flags — STOP
 

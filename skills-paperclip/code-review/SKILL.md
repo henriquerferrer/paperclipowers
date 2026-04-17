@@ -107,8 +107,8 @@ Post your findings as a comment on the issue, using the exact format in `reviewe
 There is no `POST /api/approvals/{id}/approve` endpoint for spec/plan/code review. Paperclip's `approvals` table supports only `hire_agent`, `approve_ceo_strategy`, `budget_override_required` (`packages/shared/src/constants.ts:203`). Use the status+assignee PATCH pattern below.
 
 **Spec or plan review (triggers 1-2) — if approving:**
-- Post a comment on the issue whose first line is exactly: `@<board-agent-name> APPROVED — <one-sentence summary>`. Your structured findings precede this comment; the `@<board> APPROVED` line is what the board parses.
-- PATCH the issue in ONE call: `{"status": "todo", "assigneeAgentId": "<board-agent-id>"}`. Both fields combined — separate PATCHes race.
+- Post a comment on the issue whose first line is exactly: `@<board-name> APPROVED — <one-sentence summary>`. Your structured findings precede this comment; the `@<board> APPROVED` line is what the board parses.
+- PATCH the issue in ONE call: `{"status": "todo", "assigneeUserId": "<board-user-id>", "assigneeAgentId": null}`. All three fields combined — separate PATCHes race. **Field choice is load-bearing:** the board is a Paperclip USER (cookie-auth operator), not an agent, so `assigneeUserId` takes the better-auth user-id; `assigneeAgentId` must be `null` (the server validates it as a UUID, which the board's user-id is not — using `assigneeAgentId` here 400s). See `../_shared/paperclip-conventions.md` § Approval gates § Field-split rule.
 - Exit heartbeat. The board wakes on `issue_assigned`, reads the findings + the `APPROVED` comment, and PATCHes forward to the next role (Tech Lead after spec approval, Engineer-or-orchestrator after plan approval). Do NOT PATCH directly to the next role — that bypasses the board's cross-check (Stage 5 Anomaly 3 was three skipped gates for this reason).
 
 **Spec or plan review — if rejecting:**
@@ -125,8 +125,8 @@ There is no `POST /api/approvals/{id}/approve` endpoint for spec/plan/code revie
 - Your findings comment provides the specific fixes; the `issue_assigned` wake triggers the reviewee's next heartbeat with a fresh session (per-issue session keying, spec §5.4).
 
 **Final combined review (trigger 4) — if approving:**
-- Post a comment: `@<board-agent-name> APPROVED — final combined review complete. <one-sentence summary>. Ready to merge.`
-- PATCH the parent in ONE call: `{"status": "todo", "assigneeAgentId": "<board-agent-id>"}`. The board wakes on `issue_assigned`, verifies the review, then owns the PR / merge step and the transition to `done`. Do NOT mark the parent `done` yourself — the board's touchpoint on PR merge is the final gate (`paperclip-conventions.md` § Approval gates). Stage 5 Anomaly 3 included a Reviewer marking the parent `done` directly; that stripped the final board gate.
+- Post a comment: `@<board-name> APPROVED — final combined review complete. <one-sentence summary>. Ready to merge.`
+- PATCH the parent in ONE call: `{"status": "todo", "assigneeUserId": "<board-user-id>", "assigneeAgentId": null}`. Field-split rule applies — see `paperclip-conventions.md` § Field-split rule. The board wakes on `issue_assigned`, verifies the review, then owns the PR / merge step and the transition to `done`. Do NOT mark the parent `done` yourself — the board's touchpoint on PR merge is the final gate. Stage 5 Anomaly 3 included a Reviewer marking the parent `done` directly; that stripped the final board gate.
 
 **Final combined review — if rejecting:**
 - Identify which subtask introduced the failing behavior — use `git log` to find the offending commit, map commits to subtasks via the commit-message convention or the subtask's branch.

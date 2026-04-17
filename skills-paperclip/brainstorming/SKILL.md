@@ -88,7 +88,7 @@ On `issue_assigned` wake where the issue already has a `spec` document (Reviewer
 3. For each Critical / Important finding, revise the spec content accordingly. Minor findings are advisory — apply if they fit the scope, ignore otherwise.
 4. If a finding is ambiguous or you disagree, post a single comment with technical pushback (see `code-review` skill Part 2 — Receiving Review) BEFORE writing the revised spec. The Reviewer re-wakes on `issue_commented` and responds; you re-wake on the follow-up.
 5. On concurrence, PUT the revised spec to the same `spec` key (creates a new revision). Then PATCH issue back to `{"status": "in_review", "assigneeAgentId": "<reviewer-agent-id>"}` for re-review.
-6. Exit heartbeat. On 3rd rejection cycle, escalate: post a summary comment, PATCH to `{"status": "blocked", "assigneeAgentId": "<board-id>"}`, let the board decide (spec §6.1).
+6. Exit heartbeat. On 3rd rejection cycle, escalate: post a summary comment, PATCH to `{"status": "blocked", "assigneeUserId": "<board-user-id>", "assigneeAgentId": null}` (the board is a Paperclip user — see `../_shared/paperclip-conventions.md` § Field-split rule), let the board decide (spec §6.1).
 
 ## Spec Quality Checklist
 
