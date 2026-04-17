@@ -81,40 +81,15 @@ Every subtask is a `POST /api/companies/:company-id/issues` call. The required f
 | `blockedByIssueIds` | `[]` for the head; `[<predecessor-id>]` for followers |
 | `status` | `"todo"` — always, for EVERY subtask including followers with non-empty `blockedByIssueIds`. `"blocked"` is a RUNTIME-SET status (the assignee transitions to `blocked` when it reports a mid-work blocker via the Notification Protocol); it is NEVER a creation-time status, even when the subtask has predecessors. Stage 5 Anomaly 5. |
 
-### Reading the `needsDesignPolish` flag per slice
+### Slice → subtask mapping (Stage 6.5)
 
-Each slice in `.planDocument.body` declares a `needsDesignPolish: false | true` flag (see `writing-plans/SKILL.md` § Concrete Schemas). When creating each subtask, copy the flag value into the subtask description under a "Design Polish" header:
+Each slice in `.planDocument.body` becomes one subtask. `task-orchestration` treats every slice uniformly — it does NOT inspect slices for polish flags or infer roles from slice content. Whoever the plan says owns each slice is who gets assigned when that slice becomes the chain head.
 
-```
-## Design Polish
+If the plan contains an explicit Designer slice (format per `writing-plans/SKILL.md § Designer slices`), create it like any other subtask: `parentId = <feature issue>`, `blockedByIssueIds = <slice's predecessors from the plan's dependency annotations>`, `assigneeAgentId = <Designer agent id>` for the chain head or `null` for followers per RULE 1.
 
-**needsDesignPolish:** false
-```
+The Stage 6 `needsDesignPolish: boolean` flag was retracted in Stage 6.5 (see `docs/plans/2026-04-17-stage-6.5-plan.md` Task 1). No plan field named `needsDesignPolish` exists on slices anymore. If you see one on an incoming plan, treat it as a stale artifact and proceed by the slice's explicit role annotation only.
 
-Stage 5 behaviour: always `false`, no Designer subtask spawned. Stage 6 will add: if `true`, create an additional follow-up subtask assigned to the Designer that depends on the Engineer's subtask completion. Stage 5 leaves this as a read-only surface to keep the plan→subtask mapping traceable.
-
-### Stage 6 activation — spawning a Designer subtask when `needsDesignPolish: true`
-
-When a slice in the plan has `needsDesignPolish: true`, create TWO subtasks for that slice, not one:
-
-1. **Engineer subtask** — backend + baseline UI implementation, identical to a `needsDesignPolish: false` slice. All acceptance criteria from the slice's Required test cases belong here.
-2. **Designer follow-up subtask** — visual polish on the working UI produced by the Engineer. Created immediately after the Engineer subtask, before you exit the heartbeat. Fields:
-   - `parentId`: the feature parent issue id (same as the Engineer subtask)
-   - `blockedByIssueIds: [<engineer-subtask-id>]` — Designer waits for Engineer's completion
-   - `assigneeAgentId: null` — progressive assignment (RULE 1); the Tech Lead PATCHes the Designer id when the Engineer subtask reaches terminal status
-   - `status: "todo"` — per § Creating the Subtask Graph field-table caveat, NOT `"blocked"`
-   - `title`: "Polish UI for <slice-name> (from <engineer-subtask-identifier>)"
-   - `description`: uses the Subtask Description Template, with `## Goal` scoped to visual polish, `## Required test cases` listing (a) "all Engineer subtask tests still pass" + (b) visual fidelity criteria derived from the spec's Interface section, `## Required implementation files` listing the same frontend file paths the Engineer wrote to (plus any new asset paths), and the standard Notification Protocol.
-
-When the Engineer subtask completes (you wake on `issue_comment_mentioned` via RULE 3), progressively assign the Designer subtask using the same RULE 1 + RULE 2 procedure as any follower: GET the Designer's agent status, branch per the paused-target table, PATCH assigneeAgentId if safe.
-
-In § End-of-Feature Review: wait for BOTH Engineer + Designer subtasks to be terminal before transitioning parent to `in_review`. This already falls out of the existing "all children terminal" check — no separate condition needed as long as the Designer subtask was created with the correct `parentId`.
-
-**Slice with `needsDesignPolish: false`:** create only the Engineer subtask. Stage 5 behaviour; unchanged.
-
-**Invariant:** for a slice with `needsDesignPolish: true`, the Engineer subtask is the chain head of its pair, the Designer subtask is the follower. Do NOT pre-assign the Designer subtask at creation time; progressive assignment is load-bearing (see RULE 1 and the Stage 5 Anomaly 4 note in § Post-POST verification).
-
-**Design-break routing (spec §6.4):** if the Reviewer's final combined review flags a Designer-caused regression (broken tests on code Designer touched), the rejected subtask is the Designer one, not the Engineer one. This is already handled by `code-review/SKILL.md §1.5 Final combined review — if rejecting` which reassigns the specific offending subtask; no amendment needed here. The routing flows because the Reviewer identifies the offending commit via `git log` and maps it to the subtask that authored the commit.
+**Design-break routing (spec §6.4):** if the Reviewer's final combined review flags a Designer-caused regression (broken tests on code Designer touched), the rejected subtask is the Designer one, not the Engineer one. This is handled by `code-review/SKILL.md §1.5 Final combined review — if rejecting` which reassigns the specific offending subtask; no amendment needed here. The routing works because the Reviewer identifies the offending commit via `git log` and maps it to the subtask that authored the commit.
 
 ### Curl recipe idiom
 
@@ -335,9 +310,16 @@ You wake with `contextSnapshot.wakeReason == "issue_comment_mentioned"`. The tri
    - `DONE` or `DONE_WITH_CONCERNS` — the subtask completed. Read its status (it should be `done`) and move to step 2. For `DONE_WITH_CONCERNS`, see § Notification Protocol — DONE_WITH_CONCERNS asymmetry for when to pause the chain before advancing.
    - `BLOCKED` — the subtask is stuck. Read the comment's "Need:" section. If the blocker is missing information, post a clarifying comment (without self-mention — see § Q&A Protocol). If the blocker is architectural or requires more power, escalate to the board: post `@<board> subtask <id> blocked: <reason>. Plan may need revision.` and PATCH the parent to `blocked`. Exit.
    - `NEEDS_CONTEXT` — see § Q&A Protocol.
-2. **Identify the next subtask.** Query the parent's children: `GET /api/companies/<company-id>/issues?parentId=<parent-id>&limit=20`. Find the first child with `status: "todo"` whose `blockedByIssueIds` are now all terminal. That's the next-in-line. Recover `<company-id>` from `contextSnapshot` or from the parent issue's `companyId` field.
+2. **Identify the next subtask (A6 follower-reuse guard).** Query the parent's children: `GET /api/companies/<company-id>/issues?parentId=<parent-id>&limit=20`. Recover `<company-id>` from `contextSnapshot` or from the parent issue's `companyId` field. Among pending children (`status` in `{"todo", "in_progress"}`):
+
+   - Find every child whose `blockedByIssueIds` are now all terminal — these are the candidates for the next slice(s).
+   - **Never POST a new subtask here.** A pending child that matches the plan's next slice ALREADY EXISTS — the Tech Lead created it at § Creating the Subtask Graph when decomposing the plan. Your job per-completion is to ADVANCE the existing graph, not REBUILD it. Stage 6 Anomaly 6 (PAP-28/29 duplication) traces to a per-completion wake that rebuilt the graph and POSTed a duplicate.
+   - If exactly ONE candidate exists: that child IS the next-in-line. Its intended assignee is the role the plan's corresponding slice names (Designer, Engineer, etc.); resolve the role → agent id from your company's agent roster.
+   - If ZERO candidates exist: the chain is terminal-except-parent. Proceed to § End-of-Feature Review.
+   - If TWO OR MORE candidates exist: this is either legitimate parallelism (two independent slices unblocked simultaneously — process each as a separate PATCH per § Parallelism via Independence) OR a malformed subtask graph (same slice duplicated — Stage 6 A6 symptom). Inspect the candidates: if their `title` + slice-identity differ, process as parallelism; if two candidates match the SAME slice, abort and post `@<board> ambiguous subtask graph for parent <parent-id> — N candidates for slice <slice-ref>, all blocked by <predecessor-ids>. Needs operator cancel-one-of cleanup.` + PATCH the parent to `blocked`. Exit.
+
 3. **Paused-target check.** `GET /api/agents/:next-assignee-id`. Branch per the RULE 2 table.
-4. **PATCH the next subtask's assignee.** `PATCH /api/issues/:next-subtask-id` with `{"assigneeAgentId": "<engineer-id>"}`.
+4. **PATCH the next subtask's assignee.** `PATCH /api/issues/:next-subtask-id` with `{"assigneeAgentId": "<agent-id>"}`. Do NOT POST a new subtask.
 5. **If no next-in-line (all children terminal)** proceed to § End-of-Feature Review.
 6. **Exit heartbeat.**
 
@@ -470,6 +452,8 @@ Exit heartbeat. Tech Lead's job complete.
 **Never** PATCH `assigneeAgentId` without the GET agent-status check immediately prior. Violates RULE 2. Silent wake drop; dead subtask.
 
 **Never** omit the Notification Protocol section from a subtask description. Violates RULE 3. You will not reliably wake on completion; pipeline stalls.
+
+**Never** POST a new subtask from a per-completion wake. Violates the A6 follower-reuse guard (§ Per-Completion Heartbeat step 2). Your graph was built by the first-wake heartbeat at § Creating the Subtask Graph; per-completion wakes ADVANCE the graph by PATCHing existing children, not by creating new ones. Stage 6 Anomaly 6 (PAP-28/29 duplication) traced to this mistake — the TL's per-completion heartbeat rebuilt the Designer subtask instead of progressively PATCHing the existing follower.
 
 **Never** put two subtasks on the same workspace without a `blockedByIssueIds` edge between them. Stage 3 Anomaly 4 proved this — two subtasks that touched different test files but shared the Engineer's cwd produced cross-file state contamination in the test suite. Shared cwd = chain edge, always.
 
