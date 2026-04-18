@@ -94,4 +94,4 @@ Pin SHA for Stage 6: `15ecff28fa048f3435cdd83e27673d7817ca203a`.
 - **Stage 6.5 Anomaly 16 context.** Stage 6.5 Run 2 POSTed PAP-34 and PAP-35 without `projectId`; both landed with `project_id = NULL`. Run 1 (PAP-31 + PAP-32) had inherited `projectId` — the difference in Run 2 was silent, model-driven omission of the field by the TL between the two runs. Run 2 was saved only by an operator-side manual PATCH before the Designer's wake; without that intervention the Designer would have regressed to the Stage 6 A10 failure. See `docs/plans/2026-04-17-stage-6.5-results.md` § A16 for the full evidence.
 - **Not fixed here (Stage 7+ server-side candidate).** A complementary fix in Paperclip core would be to have `createIssueSchema` auto-inherit `projectId` from `parentId` when the subtask has no explicit projectId. This skill amendment is portable and works against today's Paperclip; the server-side fix would make the rule defense-in-depth. Both are worth doing.
 
-Pin SHA for Stage 7 prep (A16): TBD — backfill after commit lands on `paperclip-adaptation`.
+Pin SHA for Stage 7 prep (A16): `fef8ba0d9133e28092612698a4240e9b1c61b2cc`.
