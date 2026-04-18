@@ -77,6 +77,7 @@ Every subtask is a `POST /api/companies/:company-id/issues` call. The required f
 | `title` | Short imperative |
 | `description` | Full subtask body (§ Subtask Description Template) |
 | `parentId` | The parent feature issue id |
+| `projectId` | **MUST equal the parent issue's `projectId`** — copy the value verbatim from the parent's `GET /api/issues/<parent-id>` response (see § The Process Step 1). If the parent has `projectId: null` (an ungrouped issue), pass `null` here too. This field is NOT auto-inherited from `parentId` by the Paperclip server; omitting it leaves the subtask with `project_id = NULL` in the DB, which causes the assignee's heartbeat to resolve `ws_source = agent_home` instead of `project_primary` — reproducing the Stage 6 A10 MCP-isolation failure. Stage 6.5 Anomaly 16. |
 | `assigneeAgentId` | Engineer agent id for the FIRST subtask in a chain; `null` for every follower |
 | `blockedByIssueIds` | `[]` for the head; `[<predecessor-id>]` for followers |
 | `status` | `"todo"` — always, for EVERY subtask including followers with non-empty `blockedByIssueIds`. `"blocked"` is a RUNTIME-SET status (the assignee transitions to `blocked` when it reports a mid-work blocker via the Notification Protocol); it is NEVER a creation-time status, even when the subtask has predecessors. Stage 5 Anomaly 5. |
@@ -106,6 +107,7 @@ Write `/tmp/subtask-1.json`:
   "title": "Add IssueSubtaskPanel pagination",
   "description": "## Goal\n\nAdd cursor pagination to IssueSubtaskPanel ...\n\n## Notification Protocol\n\nWhen terminal, post a single comment mentioning @tech-lead-agent ...",
   "parentId": "<parent-id>",
+  "projectId": "<parent-projectId-or-null>",
   "assigneeAgentId": "<engineer-agent-id>",
   "blockedByIssueIds": [],
   "status": "todo"
@@ -132,6 +134,7 @@ Write `/tmp/subtask-2.json`:
   "title": "Wire IssueSubtaskPanel pagination to UI",
   "description": "## Goal\n\nConsume the cursor pagination added in subtask 1 ...\n\n## Notification Protocol\n\nWhen terminal, post a single comment mentioning @tech-lead-agent ...",
   "parentId": "<parent-id>",
+  "projectId": "<parent-projectId-or-null>",
   "assigneeAgentId": null,
   "blockedByIssueIds": ["<subtask-1-id>"],
   "status": "todo"
@@ -146,8 +149,9 @@ After you POST every subtask in the chain, GET `/api/companies/<company-id>/issu
 
 - **Exactly ONE subtask per chain** has a non-null `assigneeAgentId` — the chain head. Every follower has `assigneeAgentId: null`. Stage 5 Anomaly 4: PAP-21 was created with `assigneeAgentId` pre-set; the Engineer happened to be idle so the pipeline worked, but a paused-target race would have deadlocked (RULE 2 exists precisely for this class of bug).
 - **Every subtask has `status: "todo"`** — NOT `"blocked"`. Even followers with non-empty `blockedByIssueIds` create with `todo`. Stage 5 Anomaly 5: PAP-21 was created with `status: "blocked"`; `issue_blockers_resolved` rescued it, but `blocked → in_progress` is not the intended state-machine path.
+- **Every subtask's `projectId` equals the parent's `projectId`.** Compare the returned `projectId` on each subtask to the value you captured from the parent's first-wake GET. Do not treat "the ids happen to look similar" as equality — string-compare. Stage 6.5 Anomaly 16: PAP-34 and PAP-35 were POSTed without `projectId` and landed with `project_id = NULL`; the Designer's heartbeat would have resolved `ws_source = agent_home` (the empty workspace) and failed the Stage 6 A10 MCP-isolation check. Operator manually PATCHed the field before Designer woke; without that intervention the validation run would have regressed to the Stage 6 failure mode.
 
-If either invariant is violated, PATCH the offending subtask(s) to compliant state (`assigneeAgentId: null` for non-head subtasks; `status: "todo"` for anything at creation) BEFORE exiting the heartbeat. Do not rely on luck — an idle target or an auto-wake fallback — to rescue a malformed graph.
+If any invariant is violated, PATCH the offending subtask(s) to compliant state (`assigneeAgentId: null` for non-head subtasks; `status: "todo"` for anything at creation; `projectId: <parent's>` for any subtask with a missing or wrong project id) BEFORE exiting the heartbeat. Do not rely on luck — an idle target, an auto-wake fallback, or an `agent_home` path that happens to equal the project workspace — to rescue a malformed graph.
 
 ## Progressive Assignment — RULE 1
 

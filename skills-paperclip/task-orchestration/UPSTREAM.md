@@ -85,3 +85,13 @@ Pin SHA for Stage 5 follow-up (field-split correction): `86f0e0c2d12b03859391329
 - **§ Post-POST verification subsection UPDATED** — "Exactly ONE subtask" → "Exactly ONE subtask per chain" to cover multi-chain cases introduced by Engineer→Designer pairs.
 
 Pin SHA for Stage 6: `15ecff28fa048f3435cdd83e27673d7817ca203a`.
+
+## Stage 7 prep (2026-04-18) — A16 subtask projectId inheritance
+
+- **§ Creating the Subtask Graph field table gained a `projectId` row** between `parentId` and `assigneeAgentId`. Rule: `projectId` on every subtask POST MUST equal the parent's `projectId` (copied from the first-wake GET on the parent); `null` if the parent is ungrouped. The Paperclip server does NOT auto-inherit this field from `parentId`, so omitting it leaves the subtask with `project_id = NULL` in the DB, which routes the assignee's heartbeat to `ws_source = agent_home` instead of `project_primary` (Stage 6 A10 failure mode).
+- **§ Curl recipes 1 and 2 BOTH gained a `projectId` field** in the JSON body, placed after `parentId` to match the field table order. The placeholder `<parent-projectId-or-null>` signals that the value is copied from the parent and may legitimately be `null`.
+- **§ Post-POST verification subsection gained a third bullet** — check that each subtask's returned `projectId` equals the captured parent `projectId`, with an explicit caveat against "the ids happen to look similar" rescue paths. Rescue PATCH clause extended to cover `projectId: <parent's>`.
+- **Stage 6.5 Anomaly 16 context.** Stage 6.5 Run 2 POSTed PAP-34 and PAP-35 without `projectId`; both landed with `project_id = NULL`. Run 1 (PAP-31 + PAP-32) had inherited `projectId` — the difference in Run 2 was silent, model-driven omission of the field by the TL between the two runs. Run 2 was saved only by an operator-side manual PATCH before the Designer's wake; without that intervention the Designer would have regressed to the Stage 6 A10 failure. See `docs/plans/2026-04-17-stage-6.5-results.md` § A16 for the full evidence.
+- **Not fixed here (Stage 7+ server-side candidate).** A complementary fix in Paperclip core would be to have `createIssueSchema` auto-inherit `projectId` from `parentId` when the subtask has no explicit projectId. This skill amendment is portable and works against today's Paperclip; the server-side fix would make the rule defense-in-depth. Both are worth doing.
+
+Pin SHA for Stage 7 prep (A16): TBD — backfill after commit lands on `paperclip-adaptation`.
