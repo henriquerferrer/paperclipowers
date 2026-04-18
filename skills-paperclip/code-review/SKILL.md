@@ -121,8 +121,12 @@ There is no `POST /api/approvals/{id}/approve` endpoint for spec/plan/code revie
 - PATCH the subtask: `{"status": "done"}`. The Notification Protocol's `issue_comment_mentioned` wake on the Tech Lead handles downstream unblocking; do NOT touch dependent subtasks' assignees yourself — that is the orchestrator's job.
 
 **Per-subtask code review — if rejecting:**
-- PATCH the subtask in ONE call: `{"status": "in_progress", "assigneeAgentId": "<last-assignee-id>"}` (Engineer, or Designer if visual changes caused the regression).
-- Your findings comment provides the specific fixes; the `issue_assigned` wake triggers the reviewee's next heartbeat with a fresh session (per-issue session keying, spec §5.4).
+- Post your findings comment FIRST (before the PATCHes below). The reviewee will read this comment on their next heartbeat's initial context load.
+- Use the **two-PATCH null-then-reassign idiom**, NOT a single `{status: in_progress, assigneeAgentId: <last-assignee-id>}` PATCH. **Stage 6.5 Anomaly 12:** a single PATCH that writes the same assignee-id the subtask already carries does NOT fire `issue_assigned` — Paperclip's wake subsystem fires only on an actual assignee-id change, and writing the same value is a no-op from the wake engine's perspective. When the Engineer finished the subtask, their `{status: done}` PATCH left `assigneeAgentId` pointing at themselves; a naive `{status: in_progress, assigneeAgentId: <engineer-id>}` rejection is a same-assignee write that drops silently. Run 1 of Stage 6.5 stalled for 6 minutes on exactly this until an operator unassign→reassign nudge forced the wake.
+- **PATCH #1** — re-open the subtask and clear the assignee in one call: `{"status": "in_progress", "assigneeAgentId": null}`. This transitions the status and unassigns; no wake fires here (assigned → null does not trigger `issue_assigned`).
+- **PATCH #2** — reassign to the reviewee: `{"assigneeAgentId": "<last-assignee-id>"}` (Engineer, or Designer if visual changes caused the regression). The null → `<last-assignee-id>` transition is a real assignee change and fires `issue_assigned` on the reviewee, forcing a fresh session per spec §5.4.
+- Issue both PATCHes back-to-back in the same heartbeat; HTTP sequential ordering is sufficient — no sleep between them is needed. Do NOT combine the two into a single PATCH call that writes the same assignee-id already present (that is precisely the silent-drop case).
+- A complementary server-side fix (Paperclip PR candidate) would be to fire an `issue_status_changed` wake on any `todo/in_progress` transition even when assignee is unchanged; the skill-level two-PATCH idiom is portable against today's Paperclip and does not require server changes.
 
 **Final combined review (trigger 4) — if approving:**
 - Post a comment: `APPROVED — final combined review complete. <one-sentence summary>. Ready to merge.` **Do NOT @-mention the board** (same rule and reasoning as spec/plan approval — Stage 6.5 A13/A14; the `assigneeUserId` PATCH below is the board's signal, not an @-mention).
@@ -130,7 +134,7 @@ There is no `POST /api/approvals/{id}/approve` endpoint for spec/plan/code revie
 
 **Final combined review — if rejecting:**
 - Identify which subtask introduced the failing behavior — use `git log` to find the offending commit, map commits to subtasks via the commit-message convention or the subtask's branch.
-- Re-open that subtask: PATCH `{"status": "in_progress", "assigneeAgentId": "<original-assignee-id>"}`.
+- Re-open that subtask using the **same two-PATCH null-then-reassign idiom** as per-subtask rejection above. The offending subtask is currently `done` with `assigneeAgentId` = its completing Engineer/Designer, so a single `{status: in_progress, assigneeAgentId: <same-id>}` PATCH would hit the same Stage 6.5 Anomaly 12 silent-drop. **PATCH #1:** `{"status": "in_progress", "assigneeAgentId": null}` on the offending subtask. **PATCH #2:** `{"assigneeAgentId": "<original-assignee-id>"}`.
 - Do NOT PATCH the parent's status yourself while a child is being re-worked. The parent stays in `in_review`; when the re-opened subtask completes, the final-review wake re-fires on you.
 
 **For any trigger — if finding architectural issues** that indicate the plan itself is wrong:
