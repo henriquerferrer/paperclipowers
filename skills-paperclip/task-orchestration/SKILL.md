@@ -105,7 +105,7 @@ Write `/tmp/subtask-1.json`:
 ```json
 {
   "title": "Add IssueSubtaskPanel pagination",
-  "description": "## Goal\n\nAdd cursor pagination to IssueSubtaskPanel ...\n\n## Notification Protocol\n\nWhen terminal, post a single comment mentioning @tech-lead-agent ...",
+  "description": "## Goal\n\nAdd cursor pagination to IssueSubtaskPanel ...\n\n## Notification Protocol\n\nWhen terminal, post a single comment mentioning @<tech-lead-name> ...",
   "parentId": "<parent-id>",
   "projectId": "<parent-projectId-or-null>",
   "assigneeAgentId": "<engineer-agent-id>",
@@ -132,7 +132,7 @@ Write `/tmp/subtask-2.json`:
 ```json
 {
   "title": "Wire IssueSubtaskPanel pagination to UI",
-  "description": "## Goal\n\nConsume the cursor pagination added in subtask 1 ...\n\n## Notification Protocol\n\nWhen terminal, post a single comment mentioning @tech-lead-agent ...",
+  "description": "## Goal\n\nConsume the cursor pagination added in subtask 1 ...\n\n## Notification Protocol\n\nWhen terminal, post a single comment mentioning @<tech-lead-name> ...",
   "parentId": "<parent-id>",
   "projectId": "<parent-projectId-or-null>",
   "assigneeAgentId": null,
@@ -176,9 +176,9 @@ Subtasks A → B → C (B blocked by A, C blocked by B). All three go to the Eng
 1. POST subtask A with `assigneeAgentId: <engineer-id>`, `blockedByIssueIds: []`.
 2. POST subtask B with `assigneeAgentId: null`, `blockedByIssueIds: [A-id]`.
 3. POST subtask C with `assigneeAgentId: null`, `blockedByIssueIds: [B-id]`.
-4. The Engineer wakes on A's `issue_assigned`, works, posts `@tech-lead DONE — ...`, sets A `done`. This unblocks B but does NOT auto-assign it.
+4. The Engineer wakes on A's `issue_assigned`, works, posts `@<tech-lead-name> DONE — ...` (substituting the real name at post time; in skill-prose examples like this one we always write the placeholder form — see `pipeline-dispatcher § No real-name substitution in quoted examples` for why), sets A `done`. This unblocks B but does NOT auto-assign it.
 5. You wake on `issue_comment_mentioned`. Confirm A is terminal. GET the Engineer agent (RULE 2). If `status !== "paused"`, PATCH B with `assigneeAgentId: <engineer-id>`.
-6. Engineer wakes fresh on B's `issue_assigned`, works, posts `@tech-lead DONE — ...`.
+6. Engineer wakes fresh on B's `issue_assigned`, works, posts `@<tech-lead-name> DONE — ...`.
 7. You wake. Same GET + PATCH for C.
 8. Engineer completes C. You PATCH the parent to `in_review`.
 

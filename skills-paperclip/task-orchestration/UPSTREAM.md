@@ -95,3 +95,13 @@ Pin SHA for Stage 6: `15ecff28fa048f3435cdd83e27673d7817ca203a`.
 - **Not fixed here (Stage 7+ server-side candidate).** A complementary fix in Paperclip core would be to have `createIssueSchema` auto-inherit `projectId` from `parentId` when the subtask has no explicit projectId. This skill amendment is portable and works against today's Paperclip; the server-side fix would make the rule defense-in-depth. Both are worth doing.
 
 Pin SHA for Stage 7 prep (A16): `fef8ba0d9133e28092612698a4240e9b1c61b2cc`.
+
+## Stage 7 prep (2026-04-18) — A15 @mention placeholder normalization
+
+- **§ Creating the Subtask Graph curl recipes 1 and 2** — `@tech-lead-agent` in the embedded Notification Protocol example strings changed to `@<tech-lead-name>` (angle-bracket placeholder).
+- **§ Progressive Assignment worked example (steps 4 and 6)** — `@tech-lead DONE — ...` changed to `@<tech-lead-name> DONE — ...`; step 4 gained an inline reference to `pipeline-dispatcher § No real-name substitution in quoted examples` explaining the rule.
+- **Stage 6.5 Anomaly 15 context.** Paperclip's `@mention` resolver matches `@<real-agent-name>` in any comment body regardless of markdown context (code blocks and blockquotes do not protect). Stage 6.5 Run 2 observed a Reviewer plan-review comment firing a spurious wake on the Tech Lead from a quoted Notification Protocol example that had been substituted with the real TL name. Bare tokens like `@tech-lead` in skill prose are currently safe only because no agent is literally named `tech-lead`; that is a latent risk if future stages hire such agents. Angle-bracketed placeholders (`@<role-name>`) break Paperclip's parser reliably because `<` is a non-word boundary char.
+- **Companion discipline added to `pipeline-dispatcher/SKILL.md § Heartbeat-Mode Disciplines § No real-name substitution in quoted examples`** codifies the general rule: when an agent quotes a protocol template into a comment body (e.g., during review), preserve the placeholder verbatim — never substitute the real name. Real `@<agent-name>` is a wake directive, always. Every skill-prose example now uses the angle-bracket form consistently so a verbatim quote remains inert.
+- **Not fixed here (Stage 7+ server-side candidate).** Paperclip core could ignore `@mentions` inside markdown code blocks and blockquotes (the A15 option-a remediation from the Stage 6.5 results doc). The skills-side normalization is belt-and-suspenders and portable against today's Paperclip; the server-side fix would make the correctness property structural rather than disciplinary. Both are worth doing.
+
+Pin SHA for Stage 7 prep (A15): TBD — backfill after commit lands on `paperclip-adaptation`.
