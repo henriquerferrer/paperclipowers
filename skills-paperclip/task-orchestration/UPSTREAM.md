@@ -104,4 +104,4 @@ Pin SHA for Stage 7 prep (A16): `fef8ba0d9133e28092612698a4240e9b1c61b2cc`.
 - **Companion discipline added to `pipeline-dispatcher/SKILL.md § Heartbeat-Mode Disciplines § No real-name substitution in quoted examples`** codifies the general rule: when an agent quotes a protocol template into a comment body (e.g., during review), preserve the placeholder verbatim — never substitute the real name. Real `@<agent-name>` is a wake directive, always. Every skill-prose example now uses the angle-bracket form consistently so a verbatim quote remains inert.
 - **Not fixed here (Stage 7+ server-side candidate).** Paperclip core could ignore `@mentions` inside markdown code blocks and blockquotes (the A15 option-a remediation from the Stage 6.5 results doc). The skills-side normalization is belt-and-suspenders and portable against today's Paperclip; the server-side fix would make the correctness property structural rather than disciplinary. Both are worth doing.
 
-Pin SHA for Stage 7 prep (A15): TBD — backfill after commit lands on `paperclip-adaptation`.
+Pin SHA for Stage 7 prep (A15): `1b2c3fc5ba1a8e5c10ef51657f2b6283c39e6da2`.
