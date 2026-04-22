@@ -30,8 +30,9 @@ Maximum 3 Q&A rounds before you must either write a spec (with assumptions docum
 On the parent `issue_assigned` wake:
 
 1. Read the issue description in full. Read the parent's parent (`.parentId` chain) if one exists for broader feature context.
-2. Check existing documents: `GET /api/issues/<id>/documents`. If a `spec` document already exists, this is NOT a First Wake — route to § Revision.
-3. Draft 2-3 batched clarifying questions covering the highest-leverage unknowns. Prefer multiple-choice framing over open-ended. Cover purpose, scope boundaries, and success criteria in order of uncertainty.
+2. **List applicable ADRs.** `GET /api/companies/<companyId>/issues?limit=200` and filter titles matching `/^ADR-\d+/` with `status === "done"`. The CEO's triage comment on this issue usually enumerates the ADRs it believes apply — prefer that list, but cross-check against your own scan. The CEO may have missed one. For each relevant ADR, read the body (`GET /api/issues/<adr-id>/documents/spec` — ADR bodies live in the `spec` document) and note the invariant it imposes. These invariants become your `## Constraints from ADRs` section in the spec; a spec that contradicts an accepted ADR is rejected at Reviewer gate.
+3. Check existing documents: `GET /api/issues/<id>/documents`. If a `spec` document already exists, this is NOT a First Wake — route to § Revision.
+4. Draft 2-3 batched clarifying questions covering the highest-leverage unknowns. Prefer multiple-choice framing over open-ended. Cover purpose, scope boundaries, and success criteria in order of uncertainty. Do NOT ask questions that are already answered by an applicable ADR — cite the ADR instead.
 4. Post one comment on the issue with the questions. Do NOT @-mention the board — the board is subscribed to its created-by issues and receives the `issue_commented` wake regardless. Self-mention would self-wake (see `../_shared/heartbeat-interaction.md` § Self-mention avoidance).
 5. Exit heartbeat.
 
@@ -67,6 +68,7 @@ You have enough context. Write the spec document:
 
 1. Draft the spec content in markdown. Target length: 300-1500 words depending on feature complexity. Include these sections (scale each to its complexity — short or omitted if truly trivial; detailed if load-bearing):
    - `## Purpose` — 1-2 sentences on what this feature does and who it's for
+   - `## Constraints from ADRs` — bulleted list. Each entry names the ADR's issue identifier + title + the specific invariant this feature must respect. Empty (explicit: `- None applicable`) if no ADRs constrain this feature. Do NOT re-state an ADR's reasoning — just the binding constraint.
    - `## Scope` — what's in, what's out. Explicit boundaries.
    - `## User Flow` or `## Interface` — the main shape of the feature. For UI features, describe the screens/states. For backend features, the endpoints/messages.
    - `## Data Model` — the primary entities and their fields. Don't specify exact types — that's the plan's job. Specify WHAT the feature stores, not HOW.
@@ -121,6 +123,8 @@ Wait for the board's reply; don't batch decomposition with clarifying questions 
 
 ## Red Flags — STOP
 
+- Writing a spec that contradicts an accepted ADR — revise to respect the invariant, or post a comment to the CTO requesting an ADR amendment and PATCH the issue back to the CEO. Never silently re-decide an architectural question that an ADR has already settled.
+- Skipping the ADR scan in § First Wake Step 2 — you will miss invariants, the Reviewer will reject your spec, and you will have wasted a full Q&A round.
 - Writing the spec on the first heartbeat (before any Q&A) — you're guessing. Post questions first.
 - Asking one question per heartbeat in a 5+ round drip — batch 2-3 per comment.
 - @-mentioning yourself in your question or announcement comments — self-wake loop.
