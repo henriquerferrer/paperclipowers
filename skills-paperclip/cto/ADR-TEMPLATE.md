@@ -45,10 +45,16 @@ Under what future circumstances should this ADR be re-examined? "Never" is a val
 
 ## Lifecycle
 
+ADRs commit the company for 6-18+ months — hosting choices, data-model invariants, vendor lock-in. They are gated by **the board (human operator)**, not the CEO agent. The CEO sees ADRs land via activity log but does not approve them.
+
 1. **Propose.** CTO creates the ADR issue with `status: "todo"`, assignee self, title `ADR-NNNN: <decision>`. Write the structured description directly. Write the full ADR body to the `spec` document (`PUT /api/issues/{id}/documents/spec`).
-2. **Review.** PATCH to `in_review` and assign to the CEO in ONE call.
-3. **Accept or revise.** CEO reads, applies Prime Directives, either approves (PATCH `status: "done"`, update title prefix to `ADR-NNNN [Accepted]:`) or rejects with findings (PATCH back to CTO with `status: "todo"`).
+2. **Route to board.** PATCH to `in_review` and assign to the **board user** in ONE call: `{"status":"in_review", "assigneeUserId":"<board-user-id>", "assigneeAgentId":null}`. The board user id is the authenticated operator's Better Auth user id — discoverable as the `createdByUserId` on early board-authored issues (see `../_shared/paperclip-conventions.md` § Field-split rule). Do NOT assign to the CEO for ADRs.
+3. **Board approves or revises.** The board reads the ADR, decides. Approval: board updates title prefix to `ADR-NNNN [Accepted]:` and PATCHes `{"status":"done"}`. Rejection with findings: board PATCHes back with `{"status":"todo", "assigneeAgentId":"<cto-id>", "assigneeUserId":null}` plus a findings comment; CTO revises.
 4. **Supersede — never edit.** When a decision changes, write ADR-(N+k) with a `Supersedes: ADR-NNNN` line in its description. Update ADR-NNNN's spec-doc Status block to `Superseded by ADR-(N+k)`. The original ADR remains in `done` status with the updated Status line — the body is not mutated.
+
+### Why board-gates, not CEO-gates
+
+ADRs are the most committal artifact in the company. Unlike a spec that can be respecified in a week, an ADR that locks the stack binds engineering hires, compliance posture, and deployment surface for quarters or years. The Prime Directives give the CEO strong review taste, but the board — as the human accountable for company outcomes — is the correct final approver. The CEO remains informed via the activity log and can write comments; it does not hold the PATCH-to-done authority for ADR issues.
 
 ## Numbering
 

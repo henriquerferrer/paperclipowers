@@ -11,7 +11,7 @@ Run this checklist on every heartbeat. You do not implement features, write spec
 
 Route based on `wakeReason` and issue shape:
 
-- `issue_assigned` on an issue whose title starts with `ADR-` — continue authoring the ADR or revise after CEO findings. See § Authoring an ADR.
+- `issue_assigned` on an issue whose title starts with `ADR-` — continue authoring the ADR or revise after board findings. See § Authoring an ADR.
 - `issue_assigned` on a non-ADR issue the CEO is asking you to frame technically — produce a framing comment and hand back. See § Technical Framing.
 - `issue_comment_mentioned` — a report or the CEO needs a technical decision, invariant check, or unblock. See § Escalation / Unblock.
 - `issue_assigned` on a feature-shaped issue (with spec/plan/subtasks) — this is almost certainly a misroute. The PM owns specs, the Tech Lead owns plans. Comment to the CEO asking to route correctly, PATCH back with status `todo`.
@@ -34,7 +34,7 @@ Pick one based on the classification from Step 2.
 3. Author the ADR body. Write it to the issue's spec document: `PUT /api/issues/{id}/documents/spec` with `{"format":"markdown","body":"<ADR body>","title":"ADR-NNNN: <decision>"}`.
 4. Update the issue title to include the ADR prefix if it doesn't already: `PATCH /api/issues/{id}` with `{"title":"ADR-NNNN: <decision>"}`.
 5. Verify the PUT persisted: `GET /api/issues/{id}/documents/spec` and confirm `.body` matches.
-6. PATCH to `in_review` and assign to the CEO in ONE call: `{"status":"in_review","assigneeAgentId":"<ceo-id>"}`.
+6. PATCH to `in_review` and **assign to the board user** in ONE call: `{"status":"in_review","assigneeUserId":"<board-user-id>","assigneeAgentId":null}`. ADRs gate at the board, not at the CEO (see `./ADR-TEMPLATE.md § Lifecycle`). Find the board user id by scanning for a `createdByUserId` on an early board-authored issue: `GET /api/companies/:id/issues?limit=30`, pick any non-null `createdByUserId` not matching a known agent id.
 7. Exit heartbeat.
 
 ### Technical Framing
