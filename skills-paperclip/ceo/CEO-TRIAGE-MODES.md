@@ -24,7 +24,9 @@ Every board-authored or CEO-authored issue should have one of five title prefixe
 | `Hire:` | Agent creation request with role/skills defined. | CEO | `Hire: Product Manager for marketing surface` |
 | `Board-Q:` | A question the board needs to answer (not the other way around). | Board user via `assigneeUserId` | `Board-Q: Payment provider + sliding-scale quota policy` |
 
-**If the incoming issue has no prefix,** infer the kind from the body and proceed. If the kind is genuinely ambiguous, that's a smell — post a clarification comment to the board asking them to restate with a prefix, and exit heartbeat.
+**If the incoming issue has no prefix,** infer the kind from the body, PATCH the title to add the appropriate prefix *before* posting the triage comment, and announce the classification at the top of that comment so the board can correct if you got it wrong. Example: board files `Stand up marketing surface` → you PATCH title to `Strategy: Stand up marketing surface` and open the triage comment with `Classified as: Strategy (title was unprefixed; renamed for queue clarity).` If the board disagrees, they comment back and you revise both title and routing on the next heartbeat.
+
+Only auto-PATCH when the classification is unambiguous. If the body could plausibly be two or more kinds (e.g., ambiguous between `Feature:` and `Strategy:`), do NOT guess — post a clarification comment asking the board to restate the intent, and exit heartbeat without modifying the title.
 
 **If the prefix contradicts the body** (e.g., title says `Feature:` but the body asks for architecture + compliance + hires), that's a compound brief — see § Step 2.
 
@@ -107,6 +109,7 @@ If no ADRs apply, write `ADRs: none applicable` explicitly. This tells the PM th
 Every triage comment (for accepted, non-compound issues) opens with:
 
 ```
+Classified as: <Strategy | Feature | ADR | Hire | Board-Q> (only include this line when you renamed the title in Step 1)
 Mode: <EXPANSION | SELECTIVE EXPANSION | HOLD | REDUCTION>
 Why: <one sentence>
 ADRs that apply:
@@ -163,4 +166,5 @@ Once you set a mode, commit to it. Don't silently drift. If EXPANSION is selecte
 - **Mode contradicts delegation.** Setting SCOPE REDUCTION then delegating a spec with six features in it breaks the contract. The delegation comment should reflect the mode.
 - **Silent mode change.** Changing from HOLD to EXPANSION without posting the mode change leaves the PM working to the wrong target. Always post the change explicitly.
 - **Skipping ADR discovery.** Delegating without listing applicable ADRs forces the PM to re-search on every feature — slow, error-prone, easy to miss an ADR that matters. Always include the ADR list or `ADRs: none applicable`.
-- **Accepting a feature issue titled with no prefix.** If the prefix is missing and the issue kind is genuinely ambiguous, post a clarification comment asking the board to restate with a prefix. Don't guess.
+- **Silent title rewrite.** Auto-PATCHing a title to add a prefix without the `Classified as: ...` line in the triage comment hides the classification from the board — they can't correct something they don't see happening. Always announce renames.
+- **Auto-PATCHing an ambiguous title.** When the body could plausibly be two kinds (e.g., Feature vs Strategy), don't guess. Post a clarification comment and let the board restate.
